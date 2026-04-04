@@ -1,5 +1,5 @@
 import { Scene } from 'phaser';
-import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL } from '../core/Constants';
+import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL, JOYSTICK, IS_TOUCH } from '../core/Constants';
 import { EventBus, Events } from '../core/EventBus';
 import { GameState } from '../core/GameState';
 import { Player } from '../objects/Player';
@@ -42,9 +42,14 @@ export class Game extends Scene {
     private smartPromoteTimer = 0; // timer to promote dumb enemies to smart
 
     // Touch state
-    private touchLeft = false;
-    private touchRight = false;
     private touchFlap = false;
+
+    // Joystick state
+    private joystickGraphics!: Phaser.GameObjects.Graphics;
+    private joystickKnob!: Phaser.GameObjects.Graphics;
+    private joystickActive = false;
+    private joystickPointerId = -1;
+    private joystickValue = 0; // -1 to 1
 
     constructor() {
         super('Game');
@@ -74,8 +79,8 @@ export class Game extends Scene {
         // Lava troll (active during survival waves)
         this.lavaTroll = new LavaTroll(this);
 
-        // Player — spawn on the top middle platform (y=340, centered at x=270)
-        this.player = new Player(this, 270, 340 - PLAYER.SIZE * 0.5);
+        // Player — spawn on the upper-middle platform (y=300 in landscape layout)
+        this.player = new Player(this, GAME.WIDTH * 0.5, 300 - PLAYER.SIZE * 0.5);
         this.physics.add.collider(this.player, this.platforms);
 
         // Object pools
@@ -578,45 +583,68 @@ export class Game extends Scene {
     }
 
     private setupTouchInput(): void {
-        // Mobile-friendly: every tap = flap + direction
-        // Tap left half = flap + move left
-        // Tap right half = flap + move right
-        // Hold = keep moving that direction
-        // This lets players flap AND steer with a single thumb
+        if (!IS_TOUCH) return; // only show joystick on touch devices
+
+        // Draw joystick base (outer ring)
+        this.joystickGraphics = this.add.graphics().setDepth(200);
+        this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_IDLE);
+        this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
+
+        // Draw knob
+        this.joystickKnob = this.add.graphics().setDepth(201);
+        this.drawKnob(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.ALPHA_IDLE);
+
+        // Multi-touch support
+        this.input.addPointer(1); // support 2 pointers
 
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            // Always flap on any tap
-            this.touchFlap = true;
-
-            // Direction based on which half of the screen
-            const halfW = GAME.WIDTH * 0.5;
-            if (pointer.x < halfW) {
-                this.touchLeft = true;
-                this.touchRight = false;
+            const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, JOYSTICK.X, JOYSTICK.Y);
+            if (dist < JOYSTICK.RADIUS * 1.5 && !this.joystickActive) {
+                // This pointer grabbed the joystick
+                this.joystickActive = true;
+                this.joystickPointerId = pointer.id;
             } else {
-                this.touchRight = true;
-                this.touchLeft = false;
+                // Tap anywhere else = flap
+                this.touchFlap = true;
             }
         });
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-            if (!pointer.isDown) return;
-            // Update direction while dragging
-            const halfW = GAME.WIDTH * 0.5;
-            if (pointer.x < halfW) {
-                this.touchLeft = true;
-                this.touchRight = false;
-            } else {
-                this.touchRight = true;
-                this.touchLeft = false;
+            if (pointer.id === this.joystickPointerId && this.joystickActive) {
+                const dx = pointer.x - JOYSTICK.X;
+                const clampedX = Phaser.Math.Clamp(dx, -JOYSTICK.RADIUS, JOYSTICK.RADIUS);
+                this.joystickValue = clampedX / JOYSTICK.RADIUS;
+                // Apply dead zone
+                if (Math.abs(this.joystickValue) < JOYSTICK.DEAD_ZONE) {
+                    this.joystickValue = 0;
+                }
+                // Update knob position
+                this.drawKnob(JOYSTICK.X + clampedX, JOYSTICK.Y, JOYSTICK.ALPHA_ACTIVE);
+                // Update ring alpha
+                this.joystickGraphics.clear();
+                this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_ACTIVE);
+                this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
             }
         });
 
-        this.input.on('pointerup', () => {
-            this.touchLeft = false;
-            this.touchRight = false;
-            this.touchFlap = false;
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.id === this.joystickPointerId) {
+                this.joystickActive = false;
+                this.joystickPointerId = -1;
+                this.joystickValue = 0;
+                // Reset knob
+                this.drawKnob(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.ALPHA_IDLE);
+                this.joystickGraphics.clear();
+                this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_IDLE);
+                this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
+            }
         });
+    }
+
+    private drawKnob(x: number, y: number, alpha: number): void {
+        this.joystickKnob.clear();
+        this.joystickKnob.fillStyle(0xffffff, alpha);
+        this.joystickKnob.fillCircle(x, y, JOYSTICK.KNOB_RADIUS);
     }
 
     private setupEventListeners(): void {
@@ -672,9 +700,11 @@ export class Game extends Scene {
             doFlap = true;
         }
 
-        // Touch
-        if (this.touchLeft) moveLeft = true;
-        if (this.touchRight) moveRight = true;
+        // Touch (joystick + tap-to-flap)
+        if (IS_TOUCH) {
+            if (this.joystickValue < -JOYSTICK.DEAD_ZONE) moveLeft = true;
+            if (this.joystickValue > JOYSTICK.DEAD_ZONE) moveRight = true;
+        }
         if (this.touchFlap) {
             doFlap = true;
             this.touchFlap = false; // one flap per tap
@@ -821,5 +851,7 @@ export class Game extends Scene {
         if (this.spectacle) this.spectacle.shutdown();
         if (this.pterodactyl) this.pterodactyl.deactivate();
         if (this.lavaTroll) this.lavaTroll.setActive(false);
+        if (this.joystickGraphics) this.joystickGraphics.destroy();
+        if (this.joystickKnob) this.joystickKnob.destroy();
     }
 }

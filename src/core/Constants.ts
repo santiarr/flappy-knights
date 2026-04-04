@@ -1,13 +1,13 @@
 export const GAME = {
-    WIDTH: 540,
-    HEIGHT: 960,
+    WIDTH: 960,
+    HEIGHT: 540,
     GRAVITY: 600,
     BACKGROUND_COLOR: 0x1a0a2e,
     BACKGROUND_COLOR_STR: '#1a0a2e',
 };
 
 export const SAFE_ZONE = {
-    TOP: Math.round(GAME.HEIGHT * 0.08),
+    TOP: Math.round(GAME.HEIGHT * 0.04),
 };
 
 export const PLAYER = {
@@ -37,8 +37,8 @@ export const ENEMY = {
     // Two-tier intelligence system (from original Joust)
     // Enemies start "dumb" (line tracking) and graduate to "smart" over time
     SMART_PROMOTE_INTERVAL: 15000, // ms between promoting one enemy from dumb→smart (original: ~15s)
-    // Three horizontal tracking lines for dumb mode (Y positions, scaled to our 960px height)
-    TRACK_LINES: [160, 400, 700],
+    // Three horizontal tracking lines for dumb mode (Y positions, scaled to our 540px height)
+    TRACK_LINES: [100, 250, 380],
     TRACK_THRESHOLD: 60, // Y distance to trigger flap toward tracking line
     // Lava lure: enemies can be baited into lava if player is this close horizontally
     LAVA_LURE_RANGE: 120,
@@ -73,19 +73,19 @@ export const EGG = {
 export const PLATFORM = {
     COLOR: 0x8b6914,
     POSITIONS: [
-        // Ground level with gaps
-        { x: 0, y: 880, w: 180, h: 16 },
-        { x: 360, y: 880, w: 180, h: 16 },
+        // Ground level with gaps (wider now)
+        { x: 0, y: 480, w: 250, h: 16 },
+        { x: 710, y: 480, w: 250, h: 16 },
         // Middle platforms
-        { x: 80, y: 700, w: 160, h: 12 },
-        { x: 300, y: 620, w: 160, h: 12 },
-        // Upper-middle platforms
-        { x: 40, y: 480, w: 140, h: 12 },
-        { x: 360, y: 480, w: 140, h: 12 },
-        // Top platforms
-        { x: 180, y: 340, w: 180, h: 12 },
-        { x: 60, y: 220, w: 120, h: 12 },
-        { x: 360, y: 220, w: 120, h: 12 },
+        { x: 150, y: 380, w: 180, h: 12 },
+        { x: 630, y: 380, w: 180, h: 12 },
+        // Upper-middle
+        { x: 350, y: 300, w: 260, h: 12 },
+        // High platforms
+        { x: 50, y: 200, w: 160, h: 12 },
+        { x: 750, y: 200, w: 160, h: 12 },
+        // Top platform
+        { x: 380, y: 130, w: 200, h: 12 },
     ],
 };
 
@@ -133,13 +133,25 @@ export const LAVA_TROLL = {
 };
 
 export const SPAWN_POINTS = [
-    { x: 0, y: 100 },
-    { x: GAME.WIDTH, y: 100 },
-    { x: 0, y: 300 },
-    { x: GAME.WIDTH, y: 300 },
+    { x: 0, y: 80 },
+    { x: GAME.WIDTH, y: 80 },
+    { x: 0, y: 200 },
+    { x: GAME.WIDTH, y: 200 },
 ];
 
 export const NEAR_MISS_DISTANCE = PLAYER.SIZE * 0.2;
+
+export const JOYSTICK = {
+    RADIUS: 50,        // outer ring radius
+    KNOB_RADIUS: 22,   // inner knob radius
+    X: 90,             // center X position (left side of screen)
+    Y: GAME.HEIGHT - 80, // near bottom
+    ALPHA_IDLE: 0.3,
+    ALPHA_ACTIVE: 0.6,
+    DEAD_ZONE: 0.15,   // minimum input threshold
+};
+
+export const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
 export const SPECTACLE = {
     // Particles

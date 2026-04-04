@@ -1,5 +1,5 @@
 import Phaser, { Scene } from 'phaser';
-import { GAME, SAFE_ZONE } from '../core/Constants';
+import { GAME, SAFE_ZONE, IS_TOUCH } from '../core/Constants';
 import { EventBus, Events } from '../core/EventBus';
 import { GameState } from '../core/GameState';
 
@@ -19,7 +19,7 @@ export class GameOver extends Scene {
 
         const cx = GAME.WIDTH * 0.5;
         const safeTop = SAFE_ZONE.TOP;
-        let y = safeTop + 70;
+        let y = safeTop + 30;
 
         // Particle rain
         this.particleRain = this.add.particles(0, 0, 'particle', {
@@ -39,7 +39,7 @@ export class GameOver extends Scene {
         // Game Over title
         const gameOverText = this.add.text(cx, y, 'GAME OVER', {
             fontFamily: ARCADE_FONT,
-            fontSize: '48px',
+            fontSize: '44px',
             color: '#ff4444',
             stroke: '#000000',
             strokeThickness: 8,
@@ -56,29 +56,29 @@ export class GameOver extends Scene {
             ease: 'Sine.easeInOut',
         });
 
-        y += 80;
+        y += 55;
 
         // Divider line
         const divider = this.add.graphics().setDepth(10);
         divider.lineStyle(1, 0x555577);
         divider.lineBetween(cx - 120, y, cx + 120, y);
 
-        y += 30;
+        y += 20;
 
         // Score with count-up
         const finalScore = GameState.score;
-        const scoreLabel = this.add.text(cx, y, 'SCORE', {
+        this.add.text(cx, y, 'SCORE', {
             fontFamily: ARCADE_FONT,
-            fontSize: '14px',
+            fontSize: '13px',
             color: '#888899',
             letterSpacing: 6,
         }).setOrigin(0.5).setDepth(10);
 
-        y += 30;
+        y += 24;
 
         const scoreText = this.add.text(cx, y, '0', {
             fontFamily: ARCADE_FONT,
-            fontSize: '36px',
+            fontSize: '32px',
             color: '#ffd700',
             fontStyle: 'bold',
             stroke: '#000000',
@@ -96,7 +96,7 @@ export class GameOver extends Scene {
             },
         });
 
-        y += 50;
+        y += 40;
 
         // Stats row
         const isNewBest = GameState.score >= GameState.bestScore;
@@ -104,21 +104,21 @@ export class GameOver extends Scene {
         // Best score
         this.add.text(cx - 80, y, 'BEST', {
             fontFamily: ARCADE_FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#888899',
         }).setOrigin(0.5).setDepth(10);
 
-        const bestText = this.add.text(cx - 80, y + 22, `${GameState.bestScore}`, {
+        this.add.text(cx - 80, y + 18, `${GameState.bestScore}`, {
             fontFamily: ARCADE_FONT,
-            fontSize: '20px',
+            fontSize: '18px',
             color: isNewBest ? '#44ff44' : '#cccccc',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
 
         if (isNewBest && finalScore > 0) {
-            this.add.text(cx - 80, y + 44, 'NEW!', {
+            this.add.text(cx - 80, y + 38, 'NEW!', {
                 fontFamily: ARCADE_FONT,
-                fontSize: '11px',
+                fontSize: '10px',
                 color: '#44ff44',
                 fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(10);
@@ -127,35 +127,35 @@ export class GameOver extends Scene {
         // Wave reached
         this.add.text(cx + 80, y, 'WAVE', {
             fontFamily: ARCADE_FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#888899',
         }).setOrigin(0.5).setDepth(10);
 
-        this.add.text(cx + 80, y + 22, `${GameState.wave}`, {
+        this.add.text(cx + 80, y + 18, `${GameState.wave}`, {
             fontFamily: ARCADE_FONT,
-            fontSize: '20px',
+            fontSize: '18px',
             color: '#aaaacc',
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
 
-        y += 80;
+        y += 55;
 
         // Best combo (if earned)
         if (GameState.bestCombo > 1) {
             this.add.text(cx, y, `BEST COMBO  ${GameState.bestCombo}x`, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '16px',
+                fontSize: '14px',
                 color: '#ffaa44',
                 fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(10);
-            y += 40;
+            y += 30;
         }
 
-        y += 20;
+        y += 10;
 
         // Play Again button
-        const btnW = 220;
-        const btnH = 50;
+        const btnW = 200;
+        const btnH = 44;
 
         const btnBg = this.add.graphics();
         btnBg.fillStyle(0x2a2a5a);
@@ -165,7 +165,7 @@ export class GameOver extends Scene {
 
         const btnText = this.add.text(0, 0, 'PLAY AGAIN', {
             fontFamily: ARCADE_FONT,
-            fontSize: '20px',
+            fontSize: '18px',
             color: '#ffd700',
             fontStyle: 'bold',
         }).setOrigin(0.5);
@@ -195,14 +195,16 @@ export class GameOver extends Scene {
             this.restartGame();
         });
 
-        y += 50;
+        y += 36;
 
-        // R key hint
-        this.add.text(cx, y, 'or press R', {
-            fontFamily: ARCADE_FONT,
-            fontSize: '12px',
-            color: '#666677',
-        }).setOrigin(0.5).setDepth(10);
+        // R key hint (desktop only)
+        if (!IS_TOUCH) {
+            this.add.text(cx, y, 'or press R', {
+                fontFamily: ARCADE_FONT,
+                fontSize: '11px',
+                color: '#666677',
+            }).setOrigin(0.5).setDepth(10);
+        }
 
         // R key to restart
         if (this.input.keyboard) {

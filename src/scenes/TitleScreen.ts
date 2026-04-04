@@ -1,5 +1,5 @@
 import Phaser, { Scene } from 'phaser';
-import { GAME, SAFE_ZONE, COLORS } from '../core/Constants';
+import { GAME, SAFE_ZONE, IS_TOUCH } from '../core/Constants';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const TITLE_COLOR = '#ffd700';
@@ -28,18 +28,17 @@ export class TitleScreen extends Scene {
 
         const cx = GAME.WIDTH * 0.5;
         const safeTop = SAFE_ZONE.TOP;
-        let y = safeTop + 60;
+        let y = safeTop + 30;
 
         // Title
-        const title = this.add.text(cx, y, 'FLAPPY\nKNIGHTS', {
+        const title = this.add.text(cx, y, 'FLAPPY KNIGHTS', {
             fontFamily: ARCADE_FONT,
-            fontSize: '50px',
+            fontSize: '44px',
             color: TITLE_COLOR,
             stroke: '#000000',
             strokeThickness: 8,
             fontStyle: 'bold',
             align: 'center',
-            lineSpacing: -5,
         }).setOrigin(0.5).setDepth(10);
 
         // Subtle title glow pulse
@@ -52,92 +51,101 @@ export class TitleScreen extends Scene {
             ease: 'Sine.easeInOut',
         });
 
-        y += 80;
+        y += 50;
 
         // Subtitle
         this.add.text(cx, y, 'AERIAL LANCE COMBAT', {
             fontFamily: ARCADE_FONT,
-            fontSize: '18px',
+            fontSize: '16px',
             color: SUB_COLOR,
             letterSpacing: 6,
         }).setOrigin(0.5).setDepth(10);
 
-        y += 70;
+        y += 45;
 
-        // --- Tutorial section ---
-        this.add.text(cx, y, '— HOW TO PLAY —', {
+        // --- Two-column layout for landscape: left = controls, right = combat/enemies ---
+        const leftCol = GAME.WIDTH * 0.28;
+        const rightCol = GAME.WIDTH * 0.72;
+        let leftY = y;
+        let rightY = y;
+
+        // --- Left column: Controls ---
+        this.add.text(leftCol, leftY, '-- HOW TO PLAY --', {
             fontFamily: ARCADE_FONT,
-            fontSize: '16px',
+            fontSize: '14px',
             color: TITLE_COLOR,
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
 
-        y += 40;
+        leftY += 30;
 
-        // Controls
-        const controls = [
-            ['← →', 'Move left / right'],
-            ['SPACE', 'Flap to fly'],
-            ['R', 'Restart (game over)'],
-        ];
+        // Platform-specific controls
+        const controls: [string, string][] = IS_TOUCH
+            ? [
+                ['JOYSTICK', 'Move left / right'],
+                ['TAP', 'Flap to fly'],
+            ]
+            : [
+                ['<- ->', 'Move left / right'],
+                ['SPACE', 'Flap to fly'],
+                ['R', 'Restart (game over)'],
+            ];
 
         for (const [key, desc] of controls) {
-            this.add.text(cx - 100, y, key, {
+            this.add.text(leftCol - 70, leftY, key, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '15px',
+                fontSize: '13px',
                 color: KEY_COLOR,
                 fontStyle: 'bold',
             }).setOrigin(1, 0.5).setDepth(10);
 
-            this.add.text(cx - 80, y, desc, {
+            this.add.text(leftCol - 50, leftY, desc, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '14px',
+                fontSize: '12px',
                 color: BODY_COLOR,
             }).setOrigin(0, 0.5).setDepth(10);
 
-            y += 30;
+            leftY += 26;
         }
 
-        y += 15;
+        leftY += 10;
 
-        // Combat rules
-        this.add.text(cx, y, '— COMBAT —', {
+        // Combat rules in left column
+        this.add.text(leftCol, leftY, '-- COMBAT --', {
             fontFamily: ARCADE_FONT,
-            fontSize: '16px',
+            fontSize: '14px',
             color: TITLE_COLOR,
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
 
-        y += 35;
+        leftY += 28;
 
         const rules = [
             'Collide with enemies to fight.',
             'The HIGHER rider wins!',
-            'Defeated foes drop eggs —',
+            'Defeated foes drop eggs --',
             'collect them for bonus points',
             'before they hatch!',
         ];
 
         for (const line of rules) {
-            this.add.text(cx, y, line, {
+            this.add.text(leftCol, leftY, line, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '13px',
+                fontSize: '11px',
                 color: BODY_COLOR,
             }).setOrigin(0.5).setDepth(10);
-            y += 22;
+            leftY += 18;
         }
 
-        y += 15;
-
-        // Enemy types
-        this.add.text(cx, y, '— ENEMIES —', {
+        // --- Right column: Enemies ---
+        this.add.text(rightCol, rightY, '-- ENEMIES --', {
             fontFamily: ARCADE_FONT,
-            fontSize: '16px',
+            fontSize: '14px',
             color: TITLE_COLOR,
             fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
 
-        y += 35;
+        rightY += 30;
 
         const enemies: [string, string, string][] = [
             ['BOUNDER', '#cc3333', 'Slow, patrols platforms'],
@@ -146,41 +154,42 @@ export class TitleScreen extends Scene {
         ];
 
         for (const [name, color, desc] of enemies) {
-            this.add.text(cx - 80, y, name, {
+            this.add.text(rightCol - 60, rightY, name, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '13px',
+                fontSize: '12px',
                 color: color,
                 fontStyle: 'bold',
             }).setOrigin(1, 0.5).setDepth(10);
 
-            this.add.text(cx - 60, y, desc, {
+            this.add.text(rightCol - 40, rightY, desc, {
                 fontFamily: ARCADE_FONT,
-                fontSize: '12px',
+                fontSize: '11px',
                 color: MUTED_COLOR,
             }).setOrigin(0, 0.5).setDepth(10);
 
-            y += 24;
+            rightY += 24;
         }
 
-        y += 20;
+        rightY += 15;
 
         // Warnings
-        this.add.text(cx, y, 'Watch out for the PTERODACTYL', {
+        this.add.text(rightCol, rightY, 'Watch out for the PTERODACTYL', {
             fontFamily: ARCADE_FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#ff6644',
         }).setOrigin(0.5).setDepth(10);
-        y += 20;
-        this.add.text(cx, y, 'and the LAVA TROLL below!', {
+        rightY += 18;
+        this.add.text(rightCol, rightY, 'and the LAVA TROLL below!', {
             fontFamily: ARCADE_FONT,
-            fontSize: '12px',
+            fontSize: '11px',
             color: '#ff6644',
         }).setOrigin(0.5).setDepth(10);
 
-        y += 50;
+        // --- Bottom: Start prompt ---
+        const bottomY = GAME.HEIGHT * 0.85;
 
-        // Start prompt
-        const startText = this.add.text(cx, y, '[ PRESS SPACE OR TAP TO START ]', {
+        const startLabel = IS_TOUCH ? '[ TAP TO START ]' : '[ PRESS SPACE OR TAP TO START ]';
+        const startText = this.add.text(cx, bottomY, startLabel, {
             fontFamily: ARCADE_FONT,
             fontSize: '16px',
             color: TITLE_COLOR,
@@ -195,15 +204,6 @@ export class TitleScreen extends Scene {
             repeat: -1,
             ease: 'Sine.easeInOut',
         });
-
-        y += 40;
-
-        // Touch hint
-        this.add.text(cx, y, 'Touch: tap left half = flap left, right = flap right', {
-            fontFamily: ARCADE_FONT,
-            fontSize: '11px',
-            color: MUTED_COLOR,
-        }).setOrigin(0.5).setDepth(10);
 
         // --- Input to start ---
         if (this.input.keyboard) {

@@ -1,0 +1,825 @@
+import { Scene } from 'phaser';
+import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL } from '../core/Constants';
+import { EventBus, Events } from '../core/EventBus';
+import { GameState } from '../core/GameState';
+import { Player } from '../objects/Player';
+import { Enemy, EnemyType } from '../objects/Enemy';
+import { Egg } from '../objects/Egg';
+import { Platform } from '../objects/Platform';
+import { LavaPit } from '../objects/LavaPit';
+import { Pterodactyl } from '../objects/Pterodactyl';
+import { LavaTroll } from '../objects/LavaTroll';
+import { SpectacleManager } from '../systems/SpectacleManager';
+import { audioManager } from '../audio/AudioManager';
+
+export class Game extends Scene {
+    private player!: Player;
+    private enemies: Enemy[] = [];
+    private eggs: Egg[] = [];
+    private platforms!: Phaser.Physics.Arcade.StaticGroup;
+    private lavaPit!: LavaPit;
+    private pterodactyl!: Pterodactyl;
+    private lavaTroll!: LavaTroll;
+    private spectacle!: SpectacleManager;
+
+    private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+    private spaceKey!: Phaser.Input.Keyboard.Key;
+    private muteKey!: Phaser.Input.Keyboard.Key;
+    private muteIcon!: Phaser.GameObjects.Graphics;
+
+    private hudScore!: Phaser.GameObjects.Text;
+    private hudLives!: Phaser.GameObjects.Text;
+    private hudWave!: Phaser.GameObjects.Text;
+    private waveText!: Phaser.GameObjects.Text;
+
+    private spawnQueue: EnemyType[] = [];
+    private spawnTimer = 0;
+    private waveTransition = false;
+    private waveTransitionTimer = 0;
+    private isGameOver = false;
+    private isSurvivalWave = false;
+    private isEggWave = false;
+    private smartPromoteTimer = 0; // timer to promote dumb enemies to smart
+
+    // Touch state
+    private touchLeft = false;
+    private touchRight = false;
+    private touchFlap = false;
+
+    constructor() {
+        super('Game');
+    }
+
+    create(): void {
+        this.isGameOver = false;
+        GameState.reset();
+
+        // Background - dark cave
+        this.cameras.main.setBackgroundColor(GAME.BACKGROUND_COLOR);
+        this.drawCaveBackground();
+
+        // Physics
+        this.physics.world.gravity.y = GAME.GRAVITY;
+        this.physics.world.setBounds(0, 0, GAME.WIDTH, GAME.HEIGHT + 100);
+
+        // Platforms
+        this.platforms = Platform.createAll(this);
+
+        // Lava
+        this.lavaPit = new LavaPit(this);
+
+        // Pterodactyl (reused across waves)
+        this.pterodactyl = new Pterodactyl(this);
+
+        // Lava troll (active during survival waves)
+        this.lavaTroll = new LavaTroll(this);
+
+        // Player — spawn on the top middle platform (y=340, centered at x=270)
+        this.player = new Player(this, 270, 340 - PLAYER.SIZE * 0.5);
+        this.physics.add.collider(this.player, this.platforms);
+
+        // Object pools
+        this.enemies = [];
+        this.eggs = [];
+        this.createEnemyPool(12);
+        this.createEggPool(12);
+
+        // Collisions
+        this.setupCollisions();
+
+        // Input
+        if (this.input.keyboard) {
+            this.cursors = this.input.keyboard.createCursorKeys();
+            this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+            this.muteKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+            this.muteKey.on('down', () => this.toggleMute());
+        }
+        this.setupTouchInput();
+
+        // HUD
+        this.createHUD();
+
+        // Event listeners
+        this.setupEventListeners();
+
+        // Spectacle system
+        this.spectacle = new SpectacleManager(this, this.player);
+
+        // Start wave 1
+        this.startWave(1);
+
+        // Mute icon
+        this.createMuteIcon();
+
+        // Start BGM
+        audioManager.startBGM();
+        EventBus.emit(Events.GAME_START);
+
+        // Spectacle entrance
+        EventBus.emit(Events.SPECTACLE_ENTRANCE);
+    }
+
+    private drawCaveBackground(): void {
+        // Tile cave wall pixel art across the screen
+        const tileSize = 48; // 16 * 3
+        const numTileVariants = 3;
+
+        for (let y = 0; y < GAME.HEIGHT; y += tileSize) {
+            for (let x = 0; x < GAME.WIDTH; x += tileSize) {
+                const variant = (Math.floor(x / tileSize) + Math.floor(y / tileSize)) % numTileVariants;
+                const tile = this.add.image(x + tileSize * 0.5, y + tileSize * 0.5, `cave_tile_${variant}`);
+                tile.setDepth(-10);
+            }
+        }
+
+        // Scatter decorative stalactite-like rocks at low alpha
+        for (let i = 0; i < 12; i++) {
+            const rx = Phaser.Math.Between(0, GAME.WIDTH);
+            const ry = Phaser.Math.Between(0, GAME.HEIGHT - 120);
+            const variant = Phaser.Math.Between(0, 2);
+            const rock = this.add.image(rx, ry, `cave_tile_${variant}`);
+            rock.setDepth(-9);
+            rock.setAlpha(0.15 + Math.random() * 0.15);
+            rock.setScale(0.6 + Math.random() * 0.8);
+        }
+    }
+
+    private createEnemyPool(count: number): void {
+        for (let i = 0; i < count; i++) {
+            const enemy = new Enemy(this, -100, -100);
+            this.physics.add.collider(enemy, this.platforms);
+            this.enemies.push(enemy);
+        }
+    }
+
+    private createEggPool(count: number): void {
+        for (let i = 0; i < count; i++) {
+            const egg = new Egg(this, -100, -100);
+            this.physics.add.collider(egg, this.platforms);
+            this.eggs.push(egg);
+        }
+    }
+
+    private getInactiveEnemy(): Enemy | null {
+        return this.enemies.find(e => !e.getIsActive()) ?? null;
+    }
+
+    private getInactiveEgg(): Egg | null {
+        return this.eggs.find(e => !e.getIsActive()) ?? null;
+    }
+
+    private setupCollisions(): void {
+        // Player vs enemies
+        for (const enemy of this.enemies) {
+            this.physics.add.overlap(this.player, enemy, () => {
+                this.handleCombat(enemy);
+            });
+        }
+
+        // Player vs eggs
+        for (const egg of this.eggs) {
+            this.physics.add.overlap(this.player, egg, () => {
+                if (egg.getIsActive()) {
+                    egg.collect();
+                }
+            });
+        }
+
+        // Player vs lava
+        this.physics.add.overlap(this.player, this.lavaPit.getZone(), () => {
+            this.handlePlayerLava();
+        });
+
+        // Enemies vs lava — destroyed, no egg drop, no points
+        for (const enemy of this.enemies) {
+            this.physics.add.overlap(enemy, this.lavaPit.getZone(), () => {
+                if (enemy.getIsActive()) {
+                    enemy.deactivate();
+                    this.checkWaveComplete();
+                }
+            });
+        }
+
+        // Eggs vs lava — eggs that fall in lava are destroyed (lost points, no penalty)
+        for (const egg of this.eggs) {
+            this.physics.add.overlap(egg, this.lavaPit.getZone(), () => {
+                if (egg.getIsActive()) {
+                    egg.deactivate();
+                }
+            });
+        }
+
+        // Player vs pterodactyl
+        this.physics.add.overlap(this.player, this.pterodactyl, () => {
+            this.handlePterodactylCombat();
+        });
+    }
+
+    private handleCombat(enemy: Enemy): void {
+        if (!enemy.getIsActive() || this.player.getIsInvulnerable() || this.isGameOver) return;
+
+        const playerBottom = this.player.y + this.player.height * 0.3;
+        const enemyBottom = enemy.y + enemy.height * 0.3;
+
+        // Player higher (lower Y) wins
+        if (playerBottom < enemy.y) {
+            this.defeatEnemy(enemy);
+        } else if (enemyBottom < this.player.y) {
+            // Enemy wins
+            this.playerHit();
+        } else {
+            // Equal height - bounce off
+            const body = this.player.body as Phaser.Physics.Arcade.Body;
+            const eBody = enemy.body as Phaser.Physics.Arcade.Body;
+            body.setVelocityY(-150);
+            body.setVelocityX(this.player.x < enemy.x ? -150 : 150);
+            eBody.setVelocityY(-150);
+            eBody.setVelocityX(enemy.x < this.player.x ? -150 : 150);
+        }
+    }
+
+    private defeatEnemy(enemy: Enemy): void {
+        const points = enemy.getPoints();
+        const type = enemy.getEnemyType();
+
+        // Drop egg
+        const egg = this.getInactiveEgg();
+        if (egg) {
+            egg.activate(enemy.x, enemy.y, type);
+        }
+
+        enemy.deactivate();
+        GameState.enemiesRemaining--;
+        GameState.addScore(points);
+        GameState.incrementCombo();
+
+        EventBus.emit(Events.ENEMY_DEFEATED, { type, points });
+        EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: points });
+        EventBus.emit(Events.SPECTACLE_HIT);
+
+        if (GameState.combo > 1) {
+            EventBus.emit(Events.SPECTACLE_COMBO, { combo: GameState.combo });
+        }
+        if (GameState.combo === 3 || GameState.combo === 5 || GameState.combo === 10) {
+            EventBus.emit(Events.SPECTACLE_STREAK, { streak: GameState.combo });
+        }
+
+        this.updateHUD();
+        this.checkWaveComplete();
+    }
+
+    private playerHit(): void {
+        if (this.player.getIsInvulnerable() || this.isGameOver) return;
+
+        GameState.lives--;
+        GameState.resetCombo();
+        this.player.damage();
+        EventBus.emit(Events.PLAYER_DAMAGED);
+
+        // Bounce player
+        const body = this.player.body as Phaser.Physics.Arcade.Body;
+        body.setVelocityY(-200);
+
+        this.updateHUD();
+
+        if (GameState.lives <= 0) {
+            this.gameOver();
+        }
+    }
+
+    private handlePlayerLava(): void {
+        if (this.isGameOver || this.player.getIsInvulnerable()) return;
+
+        GameState.lives--;
+        this.updateHUD();
+
+        if (GameState.lives <= 0) {
+            this.gameOver();
+        } else {
+            // Respawn player above
+            this.player.setPosition(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.3);
+            (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+            this.player.damage();
+        }
+    }
+
+    private gameOver(): void {
+        this.isGameOver = true;
+        EventBus.emit(Events.GAME_OVER, { score: GameState.score, wave: GameState.wave });
+        this.time.delayedCall(1000, () => {
+            this.shutdown();
+            this.scene.start('GameOver');
+        });
+    }
+
+    private generateWaveEnemies(wave: number): EnemyType[] {
+        const totalEnemies = Math.min(WAVE.BASE_ENEMIES + wave - 1, WAVE.MAX_ENEMIES);
+        const enemies: EnemyType[] = [];
+
+        // Progressive type distribution (inspired by original Joust)
+        // Waves 1-2: mostly Bounders
+        // Waves 3-5: Bounders + Hunters
+        // Waves 6-8: Hunters + Shadow Lords
+        // Waves 9+: mostly Shadow Lords
+        for (let i = 0; i < totalEnemies; i++) {
+            const roll = Math.random();
+            if (wave <= 2) {
+                // Early: all Bounders, maybe 1 Hunter
+                enemies.push(roll < 0.85 ? 'BOUNDER' : 'HUNTER');
+            } else if (wave <= 5) {
+                // Mid-early: mix of Bounders and Hunters
+                const hunterChance = 0.2 + (wave - 3) * 0.15;
+                const shadowChance = wave >= 4 ? 0.1 : 0;
+                if (roll < shadowChance) enemies.push('SHADOW_LORD');
+                else if (roll < shadowChance + hunterChance) enemies.push('HUNTER');
+                else enemies.push('BOUNDER');
+            } else if (wave <= 9) {
+                // Mid-late: Hunters dominate, Shadow Lords rising
+                const shadowChance = 0.15 + (wave - 6) * 0.1;
+                const bounderChance = Math.max(0.1, 0.3 - (wave - 6) * 0.1);
+                if (roll < shadowChance) enemies.push('SHADOW_LORD');
+                else if (roll < shadowChance + bounderChance) enemies.push('BOUNDER');
+                else enemies.push('HUNTER');
+            } else {
+                // Late: Shadow Lords dominate
+                const shadowChance = Math.min(0.6, 0.4 + (wave - 10) * 0.05);
+                const hunterChance = Math.max(0.2, 0.4 - (wave - 10) * 0.05);
+                if (roll < shadowChance) enemies.push('SHADOW_LORD');
+                else if (roll < shadowChance + hunterChance) enemies.push('HUNTER');
+                else enemies.push('BOUNDER');
+            }
+        }
+
+        return enemies;
+    }
+
+    private startWave(wave: number): void {
+        GameState.wave = wave;
+        this.isSurvivalWave = wave % WAVE.SURVIVAL_INTERVAL === 0;
+        this.isEggWave = wave > 1 && wave % WAVE.EGG_WAVE_INTERVAL === 0 && !this.isSurvivalWave;
+
+        if (this.isEggWave) {
+            // Egg bonus wave — spawn collectible eggs, no enemies
+            this.spawnQueue = [];
+            GameState.enemiesRemaining = 0;
+            this.spawnBonusEggs();
+            this.showWaveText(wave, 'EGG WAVE');
+        } else {
+            // Normal or survival wave
+            this.spawnQueue = this.generateWaveEnemies(wave);
+            Phaser.Utils.Array.Shuffle(this.spawnQueue);
+            GameState.enemiesRemaining = this.spawnQueue.length;
+            this.spawnTimer = 0;
+            this.smartPromoteTimer = 0;
+
+            if (this.isSurvivalWave) {
+                this.showWaveText(wave, 'SURVIVAL WAVE');
+                // Activate lava troll and pterodactyl
+                this.lavaTroll.setActive(true);
+                this.time.delayedCall(2000, () => {
+                    if (!this.isGameOver && !this.pterodactyl.getIsActive()) {
+                        this.pterodactyl.activate();
+                    }
+                });
+            } else {
+                this.showWaveText(wave);
+                this.lavaTroll.setActive(false);
+            }
+        }
+
+        this.updateHUD();
+        EventBus.emit(Events.GAME_NEXT_WAVE, { wave });
+    }
+
+    private spawnBonusEggs(): void {
+        for (let i = 0; i < WAVE.EGG_WAVE_COUNT; i++) {
+            const egg = this.getInactiveEgg();
+            if (egg) {
+                const types: EnemyType[] = ['BOUNDER', 'HUNTER', 'SHADOW_LORD'];
+                const x = Phaser.Math.Between(60, GAME.WIDTH - 60);
+                const y = Phaser.Math.Between(200, 600);
+                egg.activate(x, y, Phaser.Utils.Array.GetRandom(types));
+            }
+        }
+    }
+
+    private handlePterodactylCombat(): void {
+        if (!this.pterodactyl.getIsActive() || this.player.getIsInvulnerable() || this.isGameOver) return;
+
+        // Player can only defeat pterodactyl by hitting it from directly below
+        const playerTop = this.player.y - this.player.height * 0.3;
+        const pteroBottom = this.pterodactyl.y + this.pterodactyl.height * 0.3;
+
+        if (playerTop < pteroBottom && this.player.y > this.pterodactyl.y) {
+            // Player hit from below — defeat pterodactyl
+            this.pterodactyl.deactivate();
+            GameState.addScore(PTERODACTYL.POINTS);
+            EventBus.emit(Events.PTERODACTYL_DEFEATED);
+            EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: points });
+            EventBus.emit(Events.SPECTACLE_HIT);
+            this.updateHUD();
+        } else {
+            // Pterodactyl hits player
+            this.playerHit();
+        }
+    }
+
+    private checkBonusLife(): void {
+        for (let i = GameState.bonusLivesAwarded; i < WAVE.BONUS_LIFE_SCORES.length; i++) {
+            if (GameState.score >= WAVE.BONUS_LIFE_SCORES[i]) {
+                GameState.lives++;
+                GameState.bonusLivesAwarded = i + 1;
+                this.updateHUD();
+                // Flash the lives counter
+                this.tweens.add({
+                    targets: this.hudLives,
+                    scaleX: 1.5,
+                    scaleY: 1.5,
+                    duration: 200,
+                    yoyo: true,
+                    ease: 'Bounce.easeOut',
+                });
+            }
+        }
+    }
+
+    private waveSubText?: Phaser.GameObjects.Text;
+
+    private showWaveText(wave: number, subtitle?: string): void {
+        if (this.waveText) this.waveText.destroy();
+        if (this.waveSubText) this.waveSubText.destroy();
+
+        const arcadeFont = '"Courier New", Courier, monospace';
+
+        this.waveText = this.add.text(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.38, `WAVE ${wave}`, {
+            fontFamily: arcadeFont,
+            fontSize: '52px',
+            color: '#ffd700',
+            stroke: '#000000',
+            strokeThickness: 8,
+            fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(20);
+
+        if (subtitle) {
+            const subColor = subtitle.includes('SURVIVAL') ? '#ff4444' : '#ffdd44';
+            this.waveSubText = this.add.text(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.44, subtitle, {
+                fontFamily: arcadeFont,
+                fontSize: '24px',
+                color: subColor,
+                stroke: '#000000',
+                strokeThickness: 5,
+                fontStyle: 'bold',
+                letterSpacing: 4,
+            }).setOrigin(0.5).setDepth(20);
+
+            this.tweens.add({
+                targets: this.waveSubText,
+                alpha: 0,
+                y: GAME.HEIGHT * 0.42,
+                duration: WAVE.NEXT_WAVE_DISPLAY_TIME,
+                ease: 'Power2',
+                onComplete: () => {
+                    if (this.waveSubText) this.waveSubText.destroy();
+                },
+            });
+        }
+
+        this.tweens.add({
+            targets: this.waveText,
+            alpha: 0,
+            y: GAME.HEIGHT * 0.33,
+            duration: WAVE.NEXT_WAVE_DISPLAY_TIME,
+            ease: 'Power2',
+            onComplete: () => {
+                if (this.waveText) this.waveText.destroy();
+            },
+        });
+    }
+
+    private checkWaveComplete(): void {
+        if (this.waveTransition) return; // already transitioning
+
+        const activeEnemies = this.enemies.filter(e => e.getIsActive()).length;
+        const allEnemiesGone = activeEnemies === 0 && this.spawnQueue.length === 0;
+
+        if (this.isEggWave) {
+            const activeEggs = this.eggs.filter(e => e.getIsActive()).length;
+            if (activeEggs === 0 && allEnemiesGone) {
+                this.endWave();
+            }
+        } else {
+            // Wave ends when all enemies are gone — killed, fell in lava, whatever
+            if (allEnemiesGone) {
+                this.endWave();
+            }
+        }
+    }
+
+    private endWave(): void {
+        EventBus.emit(Events.GAME_WAVE_COMPLETE, { wave: GameState.wave });
+        // Clean up survival wave elements
+        if (this.isSurvivalWave) {
+            this.lavaTroll.setActive(false);
+            if (this.pterodactyl.getIsActive()) {
+                this.pterodactyl.deactivate();
+            }
+        }
+        this.waveTransition = true;
+        this.waveTransitionTimer = WAVE.WAVE_PAUSE;
+    }
+
+    private spawnNextEnemy(): void {
+        if (this.spawnQueue.length === 0) return;
+
+        const type = this.spawnQueue.shift()!;
+        const enemy = this.getInactiveEnemy();
+        if (!enemy) return;
+
+        const spawnPoint = Phaser.Utils.Array.GetRandom(SPAWN_POINTS);
+        enemy.activate(type, spawnPoint.x, spawnPoint.y);
+    }
+
+    private createHUD(): void {
+        const hudY = SAFE_ZONE.TOP + 4;
+        const arcadeFont = '"Courier New", Courier, monospace';
+
+        this.hudScore = this.add.text(10, hudY, '0', {
+            fontFamily: arcadeFont,
+            fontSize: '18px',
+            color: '#ffd700',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setDepth(100);
+
+        this.hudLives = this.add.text(GAME.WIDTH * 0.5, hudY, `♥ ${GameState.lives}`, {
+            fontFamily: arcadeFont,
+            fontSize: '18px',
+            color: '#ff4444',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(0.5, 0).setDepth(100);
+
+        this.hudWave = this.add.text(GAME.WIDTH - 50, hudY, `W${GameState.wave}`, {
+            fontFamily: arcadeFont,
+            fontSize: '18px',
+            color: '#aaaacc',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(1, 0).setDepth(100);
+    }
+
+    private updateHUD(): void {
+        this.hudScore.setText(`${GameState.score}`);
+        this.hudLives.setText(`♥ ${GameState.lives}`);
+        this.hudWave.setText(`W${GameState.wave}`);
+    }
+
+    private setupTouchInput(): void {
+        // Mobile-friendly: every tap = flap + direction
+        // Tap left half = flap + move left
+        // Tap right half = flap + move right
+        // Hold = keep moving that direction
+        // This lets players flap AND steer with a single thumb
+
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            // Always flap on any tap
+            this.touchFlap = true;
+
+            // Direction based on which half of the screen
+            const halfW = GAME.WIDTH * 0.5;
+            if (pointer.x < halfW) {
+                this.touchLeft = true;
+                this.touchRight = false;
+            } else {
+                this.touchRight = true;
+                this.touchLeft = false;
+            }
+        });
+
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+            if (!pointer.isDown) return;
+            // Update direction while dragging
+            const halfW = GAME.WIDTH * 0.5;
+            if (pointer.x < halfW) {
+                this.touchLeft = true;
+                this.touchRight = false;
+            } else {
+                this.touchRight = true;
+                this.touchLeft = false;
+            }
+        });
+
+        this.input.on('pointerup', () => {
+            this.touchLeft = false;
+            this.touchRight = false;
+            this.touchFlap = false;
+        });
+    }
+
+    private setupEventListeners(): void {
+        EventBus.on(Events.EGG_COLLECTED, (data: { points: number }) => {
+            GameState.addScore(data.points);
+            EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: data.points });
+            this.updateHUD();
+            this.checkWaveComplete();
+        });
+
+        EventBus.on(Events.EGG_HATCHED, (data: { x: number; y: number; sourceType: EnemyType }) => {
+            // Hatch into tougher enemy
+            const enemy = this.getInactiveEnemy();
+            if (enemy) {
+                const tougherType = this.getTougherType(data.sourceType);
+                enemy.activate(tougherType, data.x, data.y);
+                GameState.enemiesRemaining++;
+                EventBus.emit(Events.ENEMY_HATCHED, { type: tougherType });
+            }
+        });
+    }
+
+    private getTougherType(current: EnemyType): EnemyType {
+        if (current === 'BOUNDER') return 'HUNTER';
+        if (current === 'HUNTER') return 'SHADOW_LORD';
+        return 'SHADOW_LORD';
+    }
+
+    private checkNearMisses(): void {
+        for (const enemy of this.enemies) {
+            if (!enemy.getIsActive()) continue;
+            const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+            const collisionDist = PLAYER.SIZE * 0.5 + (enemy.width * 0.5);
+            if (dist > collisionDist && dist < collisionDist + NEAR_MISS_DISTANCE) {
+                EventBus.emit(Events.SPECTACLE_NEAR_MISS);
+            }
+        }
+    }
+
+    private handleInput(delta: number): void {
+        if (this.isGameOver) return;
+
+        let moveLeft = false;
+        let moveRight = false;
+        let doFlap = false;
+
+        // Keyboard
+        if (this.cursors) {
+            moveLeft = this.cursors.left.isDown;
+            moveRight = this.cursors.right.isDown;
+        }
+        if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+            doFlap = true;
+        }
+
+        // Touch
+        if (this.touchLeft) moveLeft = true;
+        if (this.touchRight) moveRight = true;
+        if (this.touchFlap) {
+            doFlap = true;
+            this.touchFlap = false; // one flap per tap
+        }
+
+        if (moveLeft) {
+            this.player.moveLeft(delta);
+        } else if (moveRight) {
+            this.player.moveRight(delta);
+        } else {
+            this.player.stopHorizontal();
+        }
+
+        if (doFlap) {
+            this.player.flap();
+            EventBus.emit(Events.PLAYER_FLAP);
+        }
+    }
+
+    update(time: number, delta: number): void {
+        if (this.isGameOver) return;
+
+        this.handleInput(delta);
+        this.player.update(time, delta);
+
+        // Update enemies with wave-scaled speed
+        const waveSpeedScale = Math.min(
+            1 + (GameState.wave - 1) * ENEMY.WAVE_SPEED_SCALE,
+            ENEMY.MAX_SPEED_MULTIPLIER
+        );
+        for (const enemy of this.enemies) {
+            if (enemy.getIsActive()) {
+                enemy.update(time, delta, this.player.x, this.player.y, waveSpeedScale, GameState.wave);
+            }
+        }
+
+        // Smart promotion: every SMART_PROMOTE_INTERVAL, promote one dumb enemy to smart
+        this.smartPromoteTimer += delta;
+        if (this.smartPromoteTimer >= ENEMY.SMART_PROMOTE_INTERVAL) {
+            this.smartPromoteTimer = 0;
+            const dumbEnemy = this.enemies.find(e => e.getIsActive() && !e.getIsSmart());
+            if (dumbEnemy) {
+                dumbEnemy.promoteToSmart();
+            }
+        }
+
+        // Update pterodactyl
+        if (this.pterodactyl.getIsActive()) {
+            this.pterodactyl.update(time, delta, this.player.x, this.player.y);
+        }
+
+        // Update lava troll
+        this.lavaTroll.update(time, delta);
+        if (this.lavaTroll.getIsActive() && this.lavaTroll.checkGrab(this.player.x, this.player.y)) {
+            this.handlePlayerLava();
+        }
+
+        // Update eggs
+        for (const egg of this.eggs) {
+            if (egg.getIsActive()) {
+                egg.update(time, delta);
+            }
+        }
+
+        // Update lava
+        this.lavaPit.update(time);
+
+        // Spawn enemies from queue
+        if (this.spawnQueue.length > 0) {
+            this.spawnTimer -= delta;
+            if (this.spawnTimer <= 0) {
+                this.spawnNextEnemy();
+                this.spawnTimer = WAVE.SPAWN_DELAY;
+            }
+        }
+
+        // Wave transition
+        if (this.waveTransition) {
+            this.waveTransitionTimer -= delta;
+            if (this.waveTransitionTimer <= 0) {
+                this.waveTransition = false;
+                this.startWave(GameState.wave + 1);
+            }
+        }
+
+        // Bonus life check
+        this.checkBonusLife();
+
+        // Near miss detection
+        this.checkNearMisses();
+    }
+
+    private createMuteIcon(): void {
+        this.muteIcon = this.add.graphics();
+        this.muteIcon.setDepth(100);
+        this.drawMuteIcon();
+
+        // Make interactive
+        const hitArea = new Phaser.Geom.Rectangle(GAME.WIDTH - 40, SAFE_ZONE.TOP, 36, 28);
+        this.muteIcon.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+        this.muteIcon.on('pointerdown', () => this.toggleMute());
+    }
+
+    private toggleMute(): void {
+        audioManager.toggleMute();
+        EventBus.emit(Events.AUDIO_TOGGLE_MUTE, { muted: GameState.isMuted });
+        this.drawMuteIcon();
+    }
+
+    private drawMuteIcon(): void {
+        this.muteIcon.clear();
+        const x = GAME.WIDTH - 32;
+        const y = SAFE_ZONE.TOP + 6;
+        const color = GameState.isMuted ? 0x666666 : 0xffd700;
+
+        // Speaker body
+        this.muteIcon.fillStyle(color, 1);
+        this.muteIcon.fillRect(x, y + 4, 6, 10);
+        // Speaker cone
+        this.muteIcon.fillTriangle(x + 6, y + 4, x + 6, y + 14, x + 14, y);
+        this.muteIcon.fillTriangle(x + 6, y + 4, x + 6, y + 14, x + 14, y + 18);
+
+        if (GameState.isMuted) {
+            // X mark
+            this.muteIcon.lineStyle(2, 0xff4444);
+            this.muteIcon.lineBetween(x + 16, y + 3, x + 24, y + 15);
+            this.muteIcon.lineBetween(x + 24, y + 3, x + 16, y + 15);
+        } else {
+            // Sound waves
+            this.muteIcon.lineStyle(2, color);
+            this.muteIcon.beginPath();
+            this.muteIcon.arc(x + 14, y + 9, 6, -0.6, 0.6);
+            this.muteIcon.strokePath();
+            this.muteIcon.beginPath();
+            this.muteIcon.arc(x + 14, y + 9, 10, -0.5, 0.5);
+            this.muteIcon.strokePath();
+        }
+    }
+
+    shutdown(): void {
+        audioManager.stopBGM();
+        EventBus.off(Events.EGG_COLLECTED);
+        EventBus.off(Events.EGG_HATCHED);
+        if (this.spectacle) this.spectacle.shutdown();
+        if (this.pterodactyl) this.pterodactyl.deactivate();
+        if (this.lavaTroll) this.lavaTroll.setActive(false);
+    }
+}

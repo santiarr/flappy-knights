@@ -1,5 +1,5 @@
 import { Scene } from 'phaser';
-import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL, JOYSTICK, IS_TOUCH } from '../core/Constants';
+import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL, JOYSTICK, IS_TOUCH, PLATFORM } from '../core/Constants';
 import { EventBus, Events } from '../core/EventBus';
 import { GameState } from '../core/GameState';
 import { Player } from '../objects/Player';
@@ -40,16 +40,22 @@ export class Game extends Scene {
     private isSurvivalWave = false;
     private isEggWave = false;
     private smartPromoteTimer = 0; // timer to promote dumb enemies to smart
+    private isPaused = false;
+    private pauseOverlay?: Phaser.GameObjects.Container;
+    private pauseButton?: Phaser.GameObjects.Container;
+    private escKey!: Phaser.Input.Keyboard.Key;
 
     // Touch state
     private touchFlap = false;
 
-    // Joystick state
+    // Floating joystick state — spawns where you first touch
     private joystickGraphics!: Phaser.GameObjects.Graphics;
     private joystickKnob!: Phaser.GameObjects.Graphics;
     private joystickActive = false;
     private joystickPointerId = -1;
     private joystickValue = 0; // -1 to 1
+    private joystickOriginX = 0; // where the thumb first touched
+    private joystickOriginY = 0;
 
     constructor() {
         super('Game');
@@ -79,8 +85,8 @@ export class Game extends Scene {
         // Lava troll (active during survival waves)
         this.lavaTroll = new LavaTroll(this);
 
-        // Player — spawn on the upper-middle platform (y=300 in landscape layout)
-        this.player = new Player(this, GAME.WIDTH * 0.5, 300 - PLAYER.SIZE * 0.5);
+        // Player — spawn on middle platform
+        this.player = new Player(this, GAME.WIDTH * 0.5, 320 - PLAYER.SIZE * 0.5);
         this.physics.add.collider(this.player, this.platforms);
 
         // Object pools
@@ -98,6 +104,8 @@ export class Game extends Scene {
             this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
             this.muteKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
             this.muteKey.on('down', () => this.toggleMute());
+            this.escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+            this.escKey.on('down', () => this.togglePause());
         }
         this.setupTouchInput();
 
@@ -110,17 +118,16 @@ export class Game extends Scene {
         // Spectacle system
         this.spectacle = new SpectacleManager(this, this.player);
 
-        // Start wave 1
-        this.startWave(1);
-
-        // Mute icon
+        // Mute icon + pause button
         this.createMuteIcon();
+        this.createPauseButton();
 
         // Start BGM
         audioManager.startBGM();
         EventBus.emit(Events.GAME_START);
 
-        // Spectacle entrance
+        // Start wave 1
+        this.startWave(1);
         EventBus.emit(Events.SPECTACLE_ENTRANCE);
     }
 
@@ -210,6 +217,7 @@ export class Game extends Scene {
             this.physics.add.overlap(egg, this.lavaPit.getZone(), () => {
                 if (egg.getIsActive()) {
                     egg.deactivate();
+                    this.checkWaveComplete(); // needed for egg waves
                 }
             });
         }
@@ -397,12 +405,15 @@ export class Game extends Scene {
     }
 
     private spawnBonusEggs(): void {
+        const platforms = PLATFORM.POSITIONS;
         for (let i = 0; i < WAVE.EGG_WAVE_COUNT; i++) {
             const egg = this.getInactiveEgg();
             if (egg) {
                 const types: EnemyType[] = ['BOUNDER', 'HUNTER', 'SHADOW_LORD'];
-                const x = Phaser.Math.Between(60, GAME.WIDTH - 60);
-                const y = Phaser.Math.Between(200, 600);
+                // Spawn on a random platform surface
+                const plat = Phaser.Utils.Array.GetRandom(platforms);
+                const x = plat.x + Phaser.Math.Between(20, plat.w - 20);
+                const y = plat.y - 20; // just above the platform
                 egg.activate(x, y, Phaser.Utils.Array.GetRandom(types));
             }
         }
@@ -420,7 +431,7 @@ export class Game extends Scene {
             this.pterodactyl.deactivate();
             GameState.addScore(PTERODACTYL.POINTS);
             EventBus.emit(Events.PTERODACTYL_DEFEATED);
-            EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: points });
+            EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: PTERODACTYL.POINTS });
             EventBus.emit(Events.SPECTACLE_HIT);
             this.updateHUD();
         } else {
@@ -583,47 +594,53 @@ export class Game extends Scene {
     }
 
     private setupTouchInput(): void {
-        if (!IS_TOUCH) return; // only show joystick on touch devices
+        if (!IS_TOUCH) return;
 
-        // Draw joystick base (outer ring)
+        // Floating joystick — appears wherever you first touch the left half
+        // Second finger tap anywhere = flap
         this.joystickGraphics = this.add.graphics().setDepth(200);
-        this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_IDLE);
-        this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
-
-        // Draw knob
         this.joystickKnob = this.add.graphics().setDepth(201);
-        this.drawKnob(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.ALPHA_IDLE);
 
-        // Multi-touch support
-        this.input.addPointer(1); // support 2 pointers
+        // Multi-touch: support 2 simultaneous pointers
+        this.input.addPointer(1);
 
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, JOYSTICK.X, JOYSTICK.Y);
-            if (dist < JOYSTICK.RADIUS * 1.5 && !this.joystickActive) {
-                // This pointer grabbed the joystick
+            // Left half of screen = joystick (hold + drag to move)
+            // Right half or second finger = flap
+            if (!this.joystickActive && pointer.x < GAME.WIDTH * 0.5) {
+                // Spawn joystick at touch point
                 this.joystickActive = true;
                 this.joystickPointerId = pointer.id;
+                this.joystickOriginX = pointer.x;
+                this.joystickOriginY = pointer.y;
+
+                // Draw ring at touch origin
+                this.joystickGraphics.clear();
+                this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_ACTIVE);
+                this.joystickGraphics.strokeCircle(this.joystickOriginX, this.joystickOriginY, JOYSTICK.RADIUS);
+                this.drawKnob(this.joystickOriginX, this.joystickOriginY, JOYSTICK.ALPHA_ACTIVE);
             } else {
-                // Tap anywhere else = flap
+                // Any other touch = flap
                 this.touchFlap = true;
             }
         });
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
             if (pointer.id === this.joystickPointerId && this.joystickActive) {
-                const dx = pointer.x - JOYSTICK.X;
+                const dx = pointer.x - this.joystickOriginX;
                 const clampedX = Phaser.Math.Clamp(dx, -JOYSTICK.RADIUS, JOYSTICK.RADIUS);
                 this.joystickValue = clampedX / JOYSTICK.RADIUS;
-                // Apply dead zone
+
                 if (Math.abs(this.joystickValue) < JOYSTICK.DEAD_ZONE) {
                     this.joystickValue = 0;
                 }
-                // Update knob position
-                this.drawKnob(JOYSTICK.X + clampedX, JOYSTICK.Y, JOYSTICK.ALPHA_ACTIVE);
-                // Update ring alpha
-                this.joystickGraphics.clear();
-                this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_ACTIVE);
-                this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
+
+                // Update knob to follow thumb (clamped to radius)
+                this.drawKnob(
+                    this.joystickOriginX + clampedX,
+                    this.joystickOriginY,
+                    JOYSTICK.ALPHA_ACTIVE
+                );
             }
         });
 
@@ -632,11 +649,10 @@ export class Game extends Scene {
                 this.joystickActive = false;
                 this.joystickPointerId = -1;
                 this.joystickValue = 0;
-                // Reset knob
-                this.drawKnob(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.ALPHA_IDLE);
+
+                // Hide joystick completely when not touching
                 this.joystickGraphics.clear();
-                this.joystickGraphics.lineStyle(3, 0xffffff, JOYSTICK.ALPHA_IDLE);
-                this.joystickGraphics.strokeCircle(JOYSTICK.X, JOYSTICK.Y, JOYSTICK.RADIUS);
+                this.joystickKnob.clear();
             }
         });
     }
@@ -652,7 +668,8 @@ export class Game extends Scene {
             GameState.addScore(data.points);
             EventBus.emit(Events.SCORE_CHANGED, { score: GameState.score, delta: data.points });
             this.updateHUD();
-            this.checkWaveComplete();
+            // Delay check slightly so all egg states settle
+            this.time.delayedCall(50, () => this.checkWaveComplete());
         });
 
         EventBus.on(Events.EGG_HATCHED, (data: { x: number; y: number; sourceType: EnemyType }) => {
@@ -664,6 +681,8 @@ export class Game extends Scene {
                 GameState.enemiesRemaining++;
                 EventBus.emit(Events.ENEMY_HATCHED, { type: tougherType });
             }
+            // Check if egg wave is now complete (all eggs hatched/collected)
+            this.time.delayedCall(50, () => this.checkWaveComplete());
         });
     }
 
@@ -725,7 +744,7 @@ export class Game extends Scene {
     }
 
     update(time: number, delta: number): void {
-        if (this.isGameOver) return;
+        if (this.isGameOver || this.isPaused) return;
 
         this.handleInput(delta);
         this.player.update(time, delta);
@@ -790,6 +809,9 @@ export class Game extends Scene {
             }
         }
 
+        // Periodic wave completion check — catches edge cases (egg waves, lava kills)
+        this.checkWaveComplete();
+
         // Bonus life check
         this.checkBonusLife();
 
@@ -844,7 +866,127 @@ export class Game extends Scene {
         }
     }
 
+    private createPauseButton(): void {
+        // Pause button — top left area, visible on all devices
+        const btnSize = 32;
+        const bx = SAFE_ZONE.TOP + btnSize * 0.5 + 4;
+        const by = SAFE_ZONE.TOP + btnSize * 0.5 + 4;
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x000000, 0.4);
+        bg.fillRoundedRect(-btnSize * 0.5, -btnSize * 0.5, btnSize, btnSize, 4);
+        // Two vertical bars (pause icon)
+        bg.fillStyle(0xffffff, 0.8);
+        bg.fillRect(-6, -8, 4, 16);
+        bg.fillRect(2, -8, 4, 16);
+
+        this.pauseButton = this.add.container(bx, by, [bg]);
+        this.pauseButton.setSize(btnSize, btnSize);
+        this.pauseButton.setInteractive({ useHandCursor: true }).setDepth(200);
+        this.pauseButton.on('pointerdown', (p: Phaser.Input.Pointer) => {
+            p.event.stopPropagation();
+            this.togglePause();
+        });
+    }
+
+    private togglePause(): void {
+        if (this.isGameOver) return;
+        if (this.isPaused) {
+            this.resumeGame();
+        } else {
+            this.pauseGame();
+        }
+    }
+
+    private pauseGame(): void {
+        this.isPaused = true;
+        this.physics.pause();
+        this.time.paused = true;
+
+        const cx = GAME.WIDTH * 0.5;
+        const cy = GAME.HEIGHT * 0.5;
+        const FONT = '"Courier New", Courier, monospace';
+
+        // Dim overlay
+        const dim = this.add.graphics().setDepth(300);
+        dim.fillStyle(0x000000, 0.6);
+        dim.fillRect(0, 0, GAME.WIDTH, GAME.HEIGHT);
+
+        // PAUSED title
+        const title = this.add.text(cx, cy - 60, 'PAUSED', {
+            fontFamily: FONT, fontSize: '40px', color: '#ffd700',
+            stroke: '#000000', strokeThickness: 6, fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(301);
+
+        // Resume button
+        const resumeBtn = this.createPauseMenuButton(cx, cy + 10, 'RESUME', 200, 44, () => this.resumeGame());
+
+        // Main Menu button
+        const menuBtn = this.createPauseMenuButton(cx, cy + 65, 'MAIN MENU', 200, 44, () => {
+            this.resumeGame();
+            this.shutdown();
+            this.scene.start('TitleScreen');
+        });
+
+        // ESC hint (desktop only)
+        let hint: Phaser.GameObjects.Text | null = null;
+        if (!IS_TOUCH) {
+            hint = this.add.text(cx, cy + 115, 'ESC to resume', {
+                fontFamily: FONT, fontSize: '12px', color: '#666677',
+            }).setOrigin(0.5).setDepth(301);
+        }
+
+        this.pauseOverlay = this.add.container(0, 0,
+            [dim, title, resumeBtn, menuBtn, ...(hint ? [hint] : [])]
+        ).setDepth(300);
+    }
+
+    private resumeGame(): void {
+        this.isPaused = false;
+        this.physics.resume();
+        this.time.paused = false;
+        if (this.pauseOverlay) {
+            this.pauseOverlay.destroy();
+            this.pauseOverlay = undefined;
+        }
+    }
+
+    private createPauseMenuButton(x: number, y: number, label: string, w: number, h: number, onClick: () => void): Phaser.GameObjects.Container {
+        const FONT = '"Courier New", Courier, monospace';
+        const bg = this.add.graphics();
+        bg.fillStyle(0x2a2a5a);
+        bg.fillRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+        bg.lineStyle(2, 0x5555aa);
+        bg.strokeRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+
+        const text = this.add.text(0, 0, label, {
+            fontFamily: FONT, fontSize: '18px', color: '#ffd700', fontStyle: 'bold',
+        }).setOrigin(0.5);
+
+        const container = this.add.container(x, y, [bg, text]);
+        container.setSize(w, h);
+        container.setInteractive({ useHandCursor: true }).setDepth(301);
+
+        container.on('pointerover', () => {
+            bg.clear();
+            bg.fillStyle(0x3a3a7a);
+            bg.fillRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+            bg.lineStyle(2, 0x7777cc);
+            bg.strokeRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+        });
+        container.on('pointerout', () => {
+            bg.clear();
+            bg.fillStyle(0x2a2a5a);
+            bg.fillRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+            bg.lineStyle(2, 0x5555aa);
+            bg.strokeRoundedRect(-w * 0.5, -h * 0.5, w, h, 6);
+        });
+        container.on('pointerdown', onClick);
+        return container;
+    }
+
     shutdown(): void {
+        this.isPaused = false;
         audioManager.stopBGM();
         EventBus.off(Events.EGG_COLLECTED);
         EventBus.off(Events.EGG_HATCHED);
@@ -853,5 +995,7 @@ export class Game extends Scene {
         if (this.lavaTroll) this.lavaTroll.setActive(false);
         if (this.joystickGraphics) this.joystickGraphics.destroy();
         if (this.joystickKnob) this.joystickKnob.destroy();
+        if (this.pauseOverlay) this.pauseOverlay.destroy();
+        if (this.escKey) this.escKey.removeAllListeners();
     }
 }

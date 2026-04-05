@@ -10,15 +10,16 @@ export class Pterodactyl extends Phaser.Physics.Arcade.Sprite {
     private targetY = 0;
 
     constructor(scene: Phaser.Scene) {
-        super(scene, -100, -100, 'pterodactyl_sheet', 0);
+        const frames = scene.textures.get('ptero_fly').getFrameNames().sort();
+        super(scene, -100, -100, 'ptero_fly', frames[0]);
         scene.add.existing(this);
         scene.physics.add.existing(this);
 
         const body = this.body as Phaser.Physics.Arcade.Body;
         body.setCollideWorldBounds(false);
         body.setMaxVelocity(PTERODACTYL.SPEED * 1.2, 500);
-        body.setSize(PTERODACTYL.SIZE * 0.7, PTERODACTYL.SIZE * 0.5);
-        body.setOffset(PTERODACTYL.SIZE * 0.15, PTERODACTYL.SIZE * 0.25);
+        body.setSize(50, 40);
+        body.setOffset(16, 18);
 
         this.setDepth(11);
         this.deactivate();
@@ -39,6 +40,7 @@ export class Pterodactyl extends Phaser.Physics.Arcade.Sprite {
         this.nextFlapTime = 0;
         this.setAlpha(1);
         this.setFlipX(!fromLeft);
+        this.play('pterodactyl_flap');
 
         EventBus.emit(Events.PTERODACTYL_SPAWN);
     }
@@ -81,10 +83,7 @@ export class Pterodactyl extends Phaser.Physics.Arcade.Sprite {
         if (time > this.nextFlapTime) {
             if (dy < 0 || body.velocity.y > 50) {
                 body.setVelocityY(PTERODACTYL.FLAP_FORCE);
-                this.setFrame(1);
-                this.scene.time.delayedCall(120, () => {
-                    if (this.isActive) this.setFrame(0);
-                });
+                // Animation plays continuously from activate()
             }
             this.nextFlapTime = time + PTERODACTYL.FLAP_INTERVAL;
         }

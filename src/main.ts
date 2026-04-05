@@ -30,16 +30,12 @@ const config: Phaser.Types.Core.GameConfig = {
     },
 };
 
-const StartGame = (parent: string) => {
-    return new Game({ ...config, parent });
-};
-
 document.addEventListener('DOMContentLoaded', () => {
-    StartGame('game-container');
+    new Game({ ...config, parent: 'game-container' });
     initAudioBridge();
     initPlayFun().catch(err => console.warn('Play.fun init failed:', err));
 
-    // Initialize AudioContext on first user interaction (browser autoplay policy)
+    // Initialize AudioContext on first user interaction
     const initAudio = () => {
         audioManager.init();
         document.removeEventListener('pointerdown', initAudio);

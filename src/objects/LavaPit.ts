@@ -20,8 +20,9 @@ export class LavaPit {
         this.glowGraphics = scene.add.graphics();
         this.glowGraphics.setDepth(5);
 
-        // Physics zone for collision
-        const zoneSprite = scene.add.zone(GAME.WIDTH * 0.5, LAVA.Y + LAVA.HEIGHT * 0.5, GAME.WIDTH, LAVA.HEIGHT);
+        // Physics zone for collision — extends above lava surface to catch falling entities
+        const zoneHeight = LAVA.HEIGHT + 20;
+        const zoneSprite = scene.add.zone(GAME.WIDTH * 0.5, LAVA.Y + zoneHeight * 0.5 - 10, GAME.WIDTH, zoneHeight);
         scene.physics.add.existing(zoneSprite, true);
         this.zone = zoneSprite.body as Phaser.Physics.Arcade.StaticBody;
 

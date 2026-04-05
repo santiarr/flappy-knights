@@ -3,17 +3,26 @@
 <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="/style.css">
     <title>Flappy Knights</title>
-    <meta name="x-ogp-key" content="c69d6ffa-0194-4ee5-b96a-9c394c1f9068" />
+    <meta name="x-ogp-key" content="c69d6ffa-0194-4ee5-b96a-9c394c1f9068" id="ogp-key-meta" />
     <script src="https://sdk.play.fun/latest"></script>
 </head>
 
 <body>
-    <div id="app">
-        <div id="game-container"></div>
+    <div id="game-container"></div>
+
+    <div id="rotate-overlay">
+        <div id="rotate-content">
+            <div id="rotate-icon">&#x21BB;</div>
+            <div id="rotate-text">Rotate your phone to landscape</div>
+        </div>
     </div>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

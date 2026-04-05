@@ -27,4 +27,6 @@ export const PALETTE: (number | null)[] = [
   0x332244,     // 24: cave wall dark
   0x443355,     // 25: cave wall mid
   0x554466,     // 26: cave wall light
+  0xc49000,     // 27: medium gold (ostrich shading)
+  0xe8c880,     // 28: tan (ostrich neck/belly)
 ];

@@ -3,10 +3,10 @@ import { GAME, ENEMY, PLATFORM } from '../core/Constants';
 
 export type EnemyType = 'BOUNDER' | 'HUNTER' | 'SHADOW_LORD';
 
-const SHEET_KEYS: Record<EnemyType, string> = {
-    BOUNDER: 'enemy_bounder_sheet',
-    HUNTER: 'enemy_hunter_sheet',
-    SHADOW_LORD: 'enemy_shadow_lord_sheet',
+const ATLAS_PREFIX: Record<EnemyType, string> = {
+    BOUNDER: 'bounder',
+    HUNTER: 'hunter',
+    SHADOW_LORD: 'shadow',
 };
 
 // Pre-compute platform rects for cliff detection
@@ -45,15 +45,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     private isOnPlatform = false;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
-        super(scene, x, y, 'enemy_bounder_sheet', 0);
+        const frames = scene.textures.get('bounder_idle').getFrameNames().sort();
+        super(scene, x, y, 'bounder_idle', frames[0]);
         scene.add.existing(this);
         scene.physics.add.existing(this);
 
         const body = this.body as Phaser.Physics.Arcade.Body;
         body.setCollideWorldBounds(false);
         body.setMaxVelocity(300, 500);
-        body.setSize(ENEMY.SIZE * 0.6, ENEMY.SIZE * 0.7);
-        body.setOffset(ENEMY.SIZE * 0.2, ENEMY.SIZE * 0.15);
+        body.setSize(30, 35);
+        body.setOffset(17, 12);
         body.setDragX(40);
 
         this.setDepth(9);
@@ -65,7 +66,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         const typeConfig = ENEMY.TYPES[type];
         this.speed = ENEMY.BASE_SPEED * typeConfig.speedMultiplier;
 
-        this.setTexture(SHEET_KEYS[type], 0);
+        const prefix = ATLAS_PREFIX[type];
+        this.play(`${prefix}_idle_anim`);
         this.setPosition(x, y);
         this.setActive(true);
         this.setVisible(true);
@@ -476,9 +478,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     private doFlapAnim(): void {
-        this.setFrame(1);
-        this.scene.time.delayedCall(150, () => {
-            if (this.isActive) this.setFrame(0);
+        const prefix = ATLAS_PREFIX[this.enemyType];
+        const runAnim = `${prefix}_run_anim`;
+        const idleAnim = `${prefix}_idle_anim`;
+        if (this.anims.currentAnim?.key !== runAnim) {
+            this.play(runAnim);
+        }
+        this.scene.time.delayedCall(300, () => {
+            if (this.isActive && this.anims.currentAnim?.key !== idleAnim) {
+                this.play(idleAnim);
+            }
         });
     }
 

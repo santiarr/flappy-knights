@@ -1,5 +1,5 @@
 export const GAME = {
-    WIDTH: 960,
+    WIDTH: 1170,  // ~19.5:9 matches most modern phones in landscape
     HEIGHT: 540,
     GRAVITY: 600,
     BACKGROUND_COLOR: 0x1a0a2e,
@@ -7,7 +7,7 @@ export const GAME = {
 };
 
 export const SAFE_ZONE = {
-    TOP: Math.round(GAME.HEIGHT * 0.04),
+    TOP: Math.round(GAME.HEIGHT * 0.14), // larger for Play.fun widget on mobile
 };
 
 export const PLAYER = {
@@ -73,19 +73,20 @@ export const EGG = {
 export const PLATFORM = {
     COLOR: 0x8b6914,
     POSITIONS: [
-        // Ground level with gaps (wider now)
-        { x: 0, y: 480, w: 250, h: 16 },
-        { x: 710, y: 480, w: 250, h: 16 },
-        // Middle platforms
-        { x: 150, y: 380, w: 180, h: 12 },
-        { x: 630, y: 380, w: 180, h: 12 },
-        // Upper-middle
-        { x: 350, y: 300, w: 260, h: 12 },
-        // High platforms
-        { x: 50, y: 200, w: 160, h: 12 },
-        { x: 750, y: 200, w: 160, h: 12 },
-        // Top platform
-        { x: 380, y: 130, w: 200, h: 12 },
+        // Ground level with gaps
+        { x: 0, y: 480, w: 300, h: 16 },
+        { x: 870, y: 480, w: 300, h: 16 },
+        // Lower-middle platforms
+        { x: 180, y: 390, w: 200, h: 12 },
+        { x: 790, y: 390, w: 200, h: 12 },
+        // Middle platform
+        { x: 440, y: 320, w: 290, h: 12 },
+        // Upper platforms
+        { x: 60, y: 230, w: 180, h: 12 },
+        { x: 930, y: 230, w: 180, h: 12 },
+        // Top platforms
+        { x: 300, y: 150, w: 200, h: 12 },
+        { x: 670, y: 150, w: 200, h: 12 },
     ],
 };
 
@@ -135,8 +136,8 @@ export const LAVA_TROLL = {
 export const SPAWN_POINTS = [
     { x: 0, y: 80 },
     { x: GAME.WIDTH, y: 80 },
-    { x: 0, y: 200 },
-    { x: GAME.WIDTH, y: 200 },
+    { x: 0, y: 220 },
+    { x: GAME.WIDTH, y: 220 },
 ];
 
 export const NEAR_MISS_DISTANCE = PLAYER.SIZE * 0.2;

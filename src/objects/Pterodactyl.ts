@@ -21,6 +21,7 @@ export class Pterodactyl extends Phaser.Physics.Arcade.Sprite {
         body.setSize(50, 40);
         body.setOffset(16, 18);
 
+        this.setScale(1.4);
         this.setDepth(11);
         this.deactivate();
     }

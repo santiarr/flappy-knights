@@ -57,6 +57,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         body.setOffset(17, 12);
         body.setDragX(40);
 
+        this.setScale(1.4);
         this.setDepth(9);
         this.deactivate();
     }

@@ -30,6 +30,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.aura = scene.add.graphics();
         this.aura.setDepth(9); // behind player (depth 10)
 
+        this.setScale(1.4);
         this.setDepth(10);
         this.play('player_idle_anim');
     }

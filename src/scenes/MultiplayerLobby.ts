@@ -134,9 +134,8 @@ export class MultiplayerLobby extends Scene {
 
         y += 80;
 
-        // Room code display — show roomId with spaced letters
-        const displayCode = this.roomCode.toUpperCase();
-        const codeText = this.add.text(cx, y, displayCode.split('').join('  '), {
+        // Room code display — show exact roomId (case-sensitive!)
+        const codeText = this.add.text(cx, y, this.roomCode.split('').join('  '), {
             fontFamily: ARCADE_FONT, fontSize: '40px', color: TITLE_COLOR,
             stroke: '#000000', strokeThickness: 8, fontStyle: 'bold',
             letterSpacing: 8,
@@ -228,7 +227,7 @@ export class MultiplayerLobby extends Scene {
 
         y += boxH * 0.5 + 20;
 
-        const hint = this.add.text(cx, y, 'Type the room code, then press ENTER', {
+        const hint = this.add.text(cx, y, 'Type the code exactly as shown (case-sensitive)', {
             fontFamily: ARCADE_FONT, fontSize: '12px', color: MUTED_COLOR,
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(hint);
@@ -245,7 +244,7 @@ export class MultiplayerLobby extends Scene {
         const htmlInput = document.createElement('input');
         htmlInput.type = 'text';
         htmlInput.autocomplete = 'off';
-        htmlInput.autocapitalize = 'characters';
+        htmlInput.autocapitalize = 'off';
         htmlInput.maxLength = 9;
         htmlInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.01;width:1px;height:1px;font-size:16px;z-index:9999;';
         document.body.appendChild(htmlInput);

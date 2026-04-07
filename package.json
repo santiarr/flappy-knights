@@ -22,16 +22,19 @@
         "test": "npx playwright test",
         "test:ui": "npx playwright test --ui",
         "party:dev": "npx partykit dev",
-        "party:deploy": "npx partykit deploy"
+        "party:deploy": "npx partykit deploy",
+        "server:dev": "npx ts-node server/index.ts"
     },
     "devDependencies": {
         "@playwright/test": "^1.59.1",
+        "ts-node": "^10.9.2",
         "typescript": "~5.7.2",
         "vite": "^6.3.1"
     },
     "dependencies": {
-        "partykit": "^0.0.115",
-        "partysocket": "^1.1.16",
+        "@colyseus/schema": "^4.0.19",
+        "@colyseus/sdk": "^0.17.37",
+        "colyseus": "^0.17.8",
         "phaser": "^3.90.0",
         "posthog-js": "^1.364.7",
         "terser": "^5.39.0"

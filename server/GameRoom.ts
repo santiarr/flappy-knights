@@ -289,6 +289,7 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   async onCreate(options: { code?: string } = {}) {
     this.state = new GameRoomState();
+    this.setPatchRate(50); // 20Hz state sync (every 50ms)
 
     // Set custom 4-letter room ID (official Colyseus pattern)
     const code = options.code || await this.generateUniqueCode();
@@ -384,8 +385,8 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.countdownTimer = 3000;
     this.lastCountdownSecond = 4;
 
-    // Start the simulation interval (60 fps tick)
-    this.setSimulationInterval((delta) => this.update(delta), 1000 / 60);
+    // Start the simulation interval (30 fps tick)
+    this.setSimulationInterval((delta) => this.update(delta), 1000 / 30);
   }
 
   private startWave() {
@@ -432,9 +433,13 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.nextEnemyId = 0;
     this.nextEggId = 0;
 
-    // Clear schema arrays
-    this.state.enemies.clear();
-    this.state.eggs.clear();
+    // Deactivate all pool slots (don't clear — pool is pre-allocated)
+    for (let i = 0; i < this.state.enemies.length; i++) {
+      this.state.enemies[i].active = false;
+    }
+    for (let i = 0; i < this.state.eggs.length; i++) {
+      this.state.eggs[i].active = false;
+    }
 
     for (const p of this.internalPlayers.values()) {
       p.score = 0;
@@ -587,26 +592,17 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       ps.anim = getPlayerAnim(internal);
     }
 
-    // Sync enemies — update in place, add new ones, remove dead ones
-    const activeEnemyIds = new Set(this.internalEnemies.filter(e => e.active).map(e => e.id));
-
-    // Remove schema entries for dead enemies (iterate backwards)
-    for (let i = this.state.enemies.length - 1; i >= 0; i--) {
-      if (!activeEnemyIds.has(this.state.enemies[i].id)) {
-        this.state.enemies.splice(i, 1);
-      }
+    // Sync enemies — update pool slots
+    // First, mark all slots inactive
+    for (let i = 0; i < this.state.enemies.length; i++) {
+      this.state.enemies[i].active = false;
     }
-
-    // Update existing or add new
+    // Then fill slots with active internal enemies
+    let slot = 0;
     for (const e of this.internalEnemies) {
-      if (!e.active) continue;
-      let es: EnemyState | undefined;
-      this.state.enemies.forEach((s: EnemyState) => { if (s.id === e.id) es = s; });
-      if (!es) {
-        es = new EnemyState();
-        es.id = e.id;
-        this.state.enemies.push(es);
-      }
+      if (!e.active || slot >= this.state.enemies.length) continue;
+      const es = this.state.enemies[slot];
+      es.id = e.id;
       es.enemyType = e.type;
       es.x = e.x;
       es.y = e.y;
@@ -615,30 +611,23 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       es.flipX = e.flipX;
       es.anim = getEnemyAnim(e);
       es.active = true;
+      slot++;
     }
 
-    // Sync eggs — same pattern
-    const activeEggIds = new Set(this.internalEggs.filter(e => e.active).map(e => e.id));
-
-    for (let i = this.state.eggs.length - 1; i >= 0; i--) {
-      if (!activeEggIds.has(this.state.eggs[i].id)) {
-        this.state.eggs.splice(i, 1);
-      }
+    // Same for eggs
+    for (let i = 0; i < this.state.eggs.length; i++) {
+      this.state.eggs[i].active = false;
     }
-
+    let eggSlot = 0;
     for (const egg of this.internalEggs) {
-      if (!egg.active) continue;
-      let eggS: EggState | undefined;
-      this.state.eggs.forEach((s: EggState) => { if (s.id === egg.id) eggS = s; });
-      if (!eggS) {
-        eggS = new EggState();
-        eggS.id = egg.id;
-        this.state.eggs.push(eggS);
-      }
+      if (!egg.active || eggSlot >= this.state.eggs.length) continue;
+      const eggS = this.state.eggs[eggSlot];
+      eggS.id = egg.id;
       eggS.eggType = egg.type;
       eggS.x = egg.x;
       eggS.y = egg.y;
       eggS.active = true;
+      eggSlot++;
     }
   }
 

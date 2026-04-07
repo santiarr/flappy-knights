@@ -154,7 +154,7 @@ export class MultiplayerLobby extends Scene {
             } else if (msg.type === 'player_joined' && msg.playerCount >= 2) {
                 this.scene.start('MultiplayerGame', {
                     roomCode: this.roomCode,
-                    playerId: this.localPlayerId,
+                    localPlayerId: this.localPlayerId,
                 });
             }
         };

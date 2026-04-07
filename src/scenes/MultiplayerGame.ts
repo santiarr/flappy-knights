@@ -4,6 +4,7 @@ import { connection } from '../multiplayer/connection';
 import type { ServerMessage, GameSnapshot } from '../multiplayer/types';
 import { Platform } from '../objects/Platform';
 import { LavaPit } from '../objects/LavaPit';
+import { capture } from '../analytics';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const ATLAS_PREFIX: Record<string, string> = {
@@ -103,6 +104,8 @@ export class MultiplayerGame extends Scene {
 
         // Tell server we're ready
         connection.send({ type: 'ready' });
+
+        capture('multiplayer_game_start', { roomCode: this.roomCode });
     }
 
     private drawCaveBackground(): void {
@@ -178,7 +181,14 @@ export class MultiplayerGame extends Scene {
                 this.handleGameEvent(msg.name, msg.data);
                 break;
 
-            case 'match_over':
+            case 'match_over': {
+                const localPlayer = msg.players.find(p => p.id === this.localPlayerId);
+                capture('multiplayer_game_over', {
+                    roomCode: this.roomCode,
+                    isWinner: msg.winner === this.localPlayerId,
+                    score: localPlayer?.score ?? 0,
+                    wave: localPlayer?.wave ?? 0,
+                });
                 this.shutdown();
                 this.scene.start('MultiplayerResults', {
                     winner: msg.winner,
@@ -186,6 +196,7 @@ export class MultiplayerGame extends Scene {
                     localPlayerId: this.localPlayerId,
                 });
                 break;
+            }
 
             case 'player_left':
                 // Opponent disconnected - show message, return to lobby
@@ -269,6 +280,7 @@ export class MultiplayerGame extends Scene {
 
         this.time.delayedCall(2000, () => {
             this.shutdown();
+            connection.disconnect();
             this.scene.start('TitleScreen');
         });
     }

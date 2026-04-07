@@ -237,6 +237,7 @@ export default class GameServer implements Party.Server {
   spawnTimer = 0;
   waveTransitionTimer = 0;
   countdownTimer = 0;
+  lastCountdownSecond = 0;
   smartPromoteTimer = 0;
 
   tickInterval: ReturnType<typeof setInterval> | null = null;
@@ -358,8 +359,7 @@ export default class GameServer implements Party.Server {
   startCountdown() {
     this.phase = "countdown";
     this.countdownTimer = 3000;
-
-    this.room.broadcast(JSON.stringify({ type: "countdown", seconds: 3 }));
+    this.lastCountdownSecond = 4; // Force first tick to send "3"
 
     // Use tick loop to handle countdown
     this.lastTickTime = Date.now();
@@ -420,6 +420,7 @@ export default class GameServer implements Party.Server {
     this.spawnTimer = 0;
     this.waveTransitionTimer = 0;
     this.countdownTimer = 0;
+    this.lastCountdownSecond = 0;
     this.tickCount = 0;
     this.nextEnemyId = 0;
     this.nextEggId = 0;
@@ -449,6 +450,11 @@ export default class GameServer implements Party.Server {
     const player = this.players.get(playerId);
     if (player) player.ready = true;
 
+    // Notify other players that this player wants a rematch
+    this.room.broadcast(
+      JSON.stringify({ type: "rematch", playerId }),
+    );
+
     const allReady = [...this.players.values()].every((p) => p.ready);
     if (allReady && this.players.size >= 2) {
       this.resetMatch();
@@ -473,6 +479,11 @@ export default class GameServer implements Party.Server {
     // -- Countdown phase --
     if (this.phase === "countdown") {
       this.countdownTimer -= delta;
+      const currentSecond = Math.ceil(this.countdownTimer / 1000);
+      if (currentSecond !== this.lastCountdownSecond && currentSecond > 0) {
+        this.lastCountdownSecond = currentSecond;
+        this.room.broadcast(JSON.stringify({ type: "countdown", seconds: currentSecond }));
+      }
       if (this.countdownTimer <= 0) {
         this.startWave();
       }

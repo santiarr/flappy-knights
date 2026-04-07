@@ -17,7 +17,8 @@ export type ServerMessage =
   | { type: "player_joined"; playerCount: number }
   | { type: "player_left"; playerCount: number }
   | { type: "matched"; roomCode: string }
-  | { type: "queued"; position?: number };
+  | { type: "queued"; position?: number }
+  | { type: "rematch"; playerId: string };
 
 // === Game State ===
 

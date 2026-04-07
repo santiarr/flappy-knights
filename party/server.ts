@@ -1,4 +1,5 @@
 import type * as Party from "partykit/server";
+import { updateEnemyAI, type AIEnemy, type AIPlayer } from "./enemy-ai";
 
 // ── Game Constants ──────────────────────────────────────────────────────────
 const GAME_WIDTH = 1170;
@@ -118,6 +119,12 @@ interface ServerEnemy {
   facingRight: boolean;
   nextFlapTime: number;
   isSmart: boolean;
+  // Smart AI state (used by enemy-ai module)
+  aiMode: 'level' | 'up' | 'down';
+  levelFlightTimer: number;
+  flapUpTimer: number;
+  directionCopyTimer: number;
+  onPlatform: boolean;
 }
 
 interface ServerEgg {
@@ -146,11 +153,12 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 function resolvePlatformCollisions(
-  entity: { x: number; y: number; vy: number; onGround?: boolean },
+  entity: { x: number; y: number; vy: number; onGround?: boolean; onPlatform?: boolean },
   halfW: number,
   halfH: number,
 ): void {
   if ("onGround" in entity) entity.onGround = false;
+  if ("onPlatform" in entity) entity.onPlatform = false;
   for (const p of PLATFORMS) {
     const eLeft = entity.x - halfW;
     const eRight = entity.x + halfW;
@@ -163,6 +171,7 @@ function resolvePlatformCollisions(
         entity.y = p.y - halfH;
         entity.vy = 0;
         if ("onGround" in entity) entity.onGround = true;
+        if ("onPlatform" in entity) entity.onPlatform = true;
       }
     }
   }
@@ -494,7 +503,7 @@ export default class GameServer implements Party.Server {
     // -- Update enemies --
     for (const enemy of this.enemies) {
       if (!enemy.active) continue;
-      this.updateEnemy(enemy, dt, now);
+      this.updateEnemy(enemy, dt, now, delta);
     }
 
     // -- Update eggs --
@@ -634,74 +643,49 @@ export default class GameServer implements Party.Server {
 
   // ── Enemy update ────────────────────────────────────────────────────────
 
-  updateEnemy(enemy: ServerEnemy, dt: number, now: number) {
-    const speedMult = ENEMY_TYPES[enemy.type].speedMult;
-    const speed = ENEMY_BASE_SPEED * speedMult;
+  updateEnemy(enemy: ServerEnemy, dt: number, now: number, delta: number) {
+    // Compute wave speed scale (matching client Constants.ts formula)
+    const waveSpeedScale = Math.min(1.0 + this.wave * 0.05, 2.0);
 
-    if (enemy.isSmart) {
-      // Smart mode: pursue nearest player
-      let nearest: ServerPlayer | null = null;
-      let nearestDist = Infinity;
-      for (const p of this.players.values()) {
-        if (p.isRespawning) continue;
-        const dist = Math.abs(p.x - enemy.x) + Math.abs(p.y - enemy.y);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearest = p;
-        }
-      }
+    // Build players list for AI targeting
+    const aiPlayers: AIPlayer[] = [...this.players.values()].map(p => ({
+      x: p.x,
+      y: p.y,
+      isRespawning: p.isRespawning,
+    }));
 
-      if (nearest) {
-        // Horizontal pursuit
-        if (nearest.x < enemy.x - 20) {
-          enemy.vx = -speed;
-          enemy.facingRight = false;
-          enemy.flipX = true;
-        } else if (nearest.x > enemy.x + 20) {
-          enemy.vx = speed;
-          enemy.facingRight = true;
-          enemy.flipX = false;
-        }
+    // Run the full AI (sets vx, vy, flipX, facingRight, AI state)
+    updateEnemyAI(
+      enemy as AIEnemy,
+      aiPlayers,
+      now,
+      delta,
+      waveSpeedScale,
+      this.wave,
+    );
 
-        // Flap up to reach player
-        if (nearest.y < enemy.y - 30 && now >= enemy.nextFlapTime) {
-          enemy.vy = Math.max(enemy.vy + ENEMY_FLAP_FORCE, -PLAYER_MAX_VY);
-          enemy.nextFlapTime = randomFlapTime();
-        }
-      }
-    } else {
-      // Dumb mode: line tracking
-      enemy.vx = enemy.facingRight ? speed : -speed;
-      enemy.flipX = !enemy.facingRight;
-
-      // Flap to reach tracking line
-      if (enemy.y > enemy.trackingLine + 20 && now >= enemy.nextFlapTime) {
-        enemy.vy = Math.max(enemy.vy + ENEMY_FLAP_FORCE, -PLAYER_MAX_VY);
-        enemy.nextFlapTime = randomFlapTime();
-      }
-
-      // Occasionally change tracking line
-      if (Math.random() < 0.002) {
-        enemy.trackingLine = pickTrackingLine();
-      }
-    }
-
-    // Physics
+    // Physics (gravity + position integration)
     enemy.vy += GRAVITY * dt;
     enemy.vy = clamp(enemy.vy, -PLAYER_MAX_VY, PLAYER_MAX_VY);
     enemy.x += enemy.vx * dt;
     enemy.y += enemy.vy * dt;
 
-    // Platform collisions
+    // Platform collisions (also sets onPlatform via resolvePlatformCollisions)
     resolvePlatformCollisions(enemy, ENEMY_HALF_W, ENEMY_HALF_H);
 
-    // Screen wrap (reverse direction for dumb enemies)
+    // Screen wrap
     if (enemy.x < -32) {
       enemy.x = GAME_WIDTH + 32;
       if (!enemy.isSmart) enemy.facingRight = false;
     } else if (enemy.x > GAME_WIDTH + 32) {
       enemy.x = -32;
       if (!enemy.isSmart) enemy.facingRight = true;
+    }
+
+    // Ceiling bounce
+    if (enemy.y < 0) {
+      enemy.y = 0;
+      enemy.vy = 50;
     }
 
     // Lava — deactivate
@@ -911,6 +895,11 @@ export default class GameServer implements Party.Server {
       facingRight,
       nextFlapTime: randomFlapTime(),
       isSmart: false,
+      aiMode: 'level',
+      levelFlightTimer: 0,
+      flapUpTimer: 0,
+      directionCopyTimer: 0,
+      onPlatform: false,
     };
 
     this.enemies.push(enemy);
@@ -931,6 +920,11 @@ export default class GameServer implements Party.Server {
       facingRight,
       nextFlapTime: randomFlapTime(),
       isSmart: smart,
+      aiMode: 'level',
+      levelFlightTimer: 0,
+      flapUpTimer: 0,
+      directionCopyTimer: 0,
+      onPlatform: false,
     };
     this.enemies.push(enemy);
   }

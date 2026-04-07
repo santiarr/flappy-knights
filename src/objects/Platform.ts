@@ -30,7 +30,7 @@ export class Platform extends Phaser.Physics.Arcade.Sprite {
         scene.add.existing(this);
         scene.physics.add.existing(this, true); // static body
 
-        this.setDepth(5);
+        this.setDepth(8);
     }
 
     static createAll(scene: Phaser.Scene): Phaser.Physics.Arcade.StaticGroup {

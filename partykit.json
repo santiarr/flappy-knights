@@ -1,0 +1,7 @@
+{
+  "name": "flappy-knights",
+  "main": "party/server.ts",
+  "parties": {
+    "matchmaking": "party/matchmaking.ts"
+  }
+}

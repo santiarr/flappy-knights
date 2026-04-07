@@ -1,6 +1,7 @@
 import { Scene } from 'phaser';
 import { GAME, SAFE_ZONE, IS_TOUCH, JOYSTICK } from '../core/Constants';
 import { connection } from '../multiplayer/connection';
+import type { ClientPlayerState, ClientEnemyState, ClientEggState } from '../multiplayer/types';
 import { Platform } from '../objects/Platform';
 import { LavaPit } from '../objects/LavaPit';
 import { capture } from '../analytics';
@@ -49,7 +50,7 @@ export class MultiplayerGame extends Scene {
     private joystickOriginY = 0;
 
     // Event handler ref for cleanup
-    private eventHandler: ((type: string, data: any) => void) | null = null;
+    private eventHandler: ((type: string, data: Record<string, unknown>) => void) | null = null;
 
     constructor() {
         super('MultiplayerGame');
@@ -97,7 +98,7 @@ export class MultiplayerGame extends Scene {
         this.createHUD();
 
         // Listen for game events via connection
-        this.eventHandler = (type: string, eventData: any) => {
+        this.eventHandler = (type: string, eventData: Record<string, unknown>) => {
             this.handleGameEvent(type, eventData);
         };
         connection.onEvent(this.eventHandler);
@@ -168,7 +169,7 @@ export class MultiplayerGame extends Scene {
         }).setOrigin(1, 0).setDepth(100);
     }
 
-    private handleGameEvent(type: string, data?: any): void {
+    private handleGameEvent(type: string, data?: Record<string, unknown>): void {
         switch (type) {
             case 'countdown':
                 this.showCountdown(data?.seconds ?? data);
@@ -191,7 +192,8 @@ export class MultiplayerGame extends Scene {
                 break;
 
             case 'match_over': {
-                const localPlayer = data.players?.find((p: any) => p.id === this.localPlayerId);
+                const players = data.players as { id: string; score: number; wave: number }[] | undefined;
+                const localPlayer = players?.find(p => p.id === this.localPlayerId);
                 capture('multiplayer_game_over', {
                     roomCode: this.roomCode,
                     isWinner: data.winner === this.localPlayerId,
@@ -367,13 +369,12 @@ export class MultiplayerGame extends Scene {
     }
 
     private renderFromState(): void {
-        const room = connection.getRoom();
-        if (!room?.state) return;
-        const state = room.state;
+        const state = connection.getState();
+        if (!state) return;
 
         // Render players
         if (state.players) {
-            state.players.forEach((player: any, sessionId: string) => {
+            state.players.forEach((player: ClientPlayerState, sessionId: string) => {
                 const sprite = sessionId === this.localPlayerId ? this.localSprite : this.opponentSprite;
 
                 if (player.isRespawning) {
@@ -415,10 +416,10 @@ export class MultiplayerGame extends Scene {
         this.updateHUD();
     }
 
-    private syncEnemySprites(enemies: any): void {
+    private syncEnemySprites(enemies: { forEach: (cb: (e: ClientEnemyState) => void) => void }): void {
         const activeIds = new Set<number>();
 
-        enemies.forEach((e: any) => {
+        enemies.forEach((e: ClientEnemyState) => {
             if (!e.active) return;
             const id = e.id;
             activeIds.add(id);
@@ -451,10 +452,10 @@ export class MultiplayerGame extends Scene {
         }
     }
 
-    private syncEggSprites(eggs: any): void {
+    private syncEggSprites(eggs: { forEach: (cb: (e: ClientEggState) => void) => void }): void {
         const activeIds = new Set<number>();
 
-        eggs.forEach((e: any) => {
+        eggs.forEach((e: ClientEggState) => {
             if (!e.active) return;
             const id = e.id;
             activeIds.add(id);
@@ -479,12 +480,11 @@ export class MultiplayerGame extends Scene {
     }
 
     private updateHUD(): void {
-        const room = connection.getRoom();
-        if (!room?.state) return;
-        const state = room.state;
+        const state = connection.getState();
+        if (!state) return;
 
         if (state.players) {
-            state.players.forEach((player: any, sessionId: string) => {
+            state.players.forEach((player: ClientPlayerState, sessionId: string) => {
                 if (sessionId === this.localPlayerId) {
                     this.hudLocalScore.setText(`${player.score}`);
                     this.hudLocalLives.setText('\u2665'.repeat(Math.max(0, player.lives)));

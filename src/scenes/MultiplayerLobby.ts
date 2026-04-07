@@ -12,7 +12,7 @@ export class MultiplayerLobby extends Scene {
     private localPlayerId = '';
     private roomCode = '';
     private codeInput = '';
-    private eventHandler: ((type: string, data: any) => void) | null = null;
+    private eventHandler: ((type: string, data: Record<string, unknown>) => void) | null = null;
     private dotTimer?: Phaser.Time.TimerEvent;
 
     constructor() {
@@ -71,7 +71,15 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.createRoom();
                 this.localPlayerId = room.sessionId;
-                this.roomCode = (room.state as any)?.code || room.roomId;
+                // Wait for first state sync to get the short code
+                await new Promise<void>((resolve) => {
+                    const check = () => {
+                        const code = connection.getState()?.code;
+                        if (code) { this.roomCode = code; resolve(); }
+                    };
+                    check();
+                    if (!this.roomCode) room.onStateChange.once(check);
+                });
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to create room:', err);
@@ -93,7 +101,14 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.quickMatch();
                 this.localPlayerId = room.sessionId;
-                this.roomCode = (room.state as any)?.code || room.roomId;
+                await new Promise<void>((resolve) => {
+                    const check = () => {
+                        const code = connection.getState()?.code;
+                        if (code) { this.roomCode = code; resolve(); }
+                    };
+                    check();
+                    if (!this.roomCode) room.onStateChange.once(check);
+                });
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to quick match:', err);
@@ -171,7 +186,7 @@ export class MultiplayerLobby extends Scene {
             };
 
             // Listen for player_joined via server message
-            this.eventHandler = (type: string, _data: any) => {
+            this.eventHandler = (type: string, _data: Record<string, unknown>) => {
                 if (type === 'player_joined') {
                     checkPlayers();
                 }
@@ -256,7 +271,7 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.joinRoom(this.codeInput);
                 this.localPlayerId = room.sessionId;
-                this.roomCode = (room.state as any)?.code || room.roomId;
+                this.roomCode = this.codeInput;
                 htmlInput.remove();
                 this.showWaiting();
             } catch (err) {

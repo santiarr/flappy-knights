@@ -7,7 +7,7 @@ const ARCADE_FONT = '"Courier New", Courier, monospace';
 
 export class MultiplayerResults extends Scene {
     private particleRain?: Phaser.GameObjects.Particles.ParticleEmitter;
-    private eventHandler?: (type: string, data: any) => void;
+    private eventHandler?: (type: string, data: Record<string, unknown>) => void;
     private rematchPending = false;
     private opponentRematchPending = false;
     private rematchStatusText?: Phaser.GameObjects.Text;

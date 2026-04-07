@@ -1,8 +1,9 @@
 import { Client, Room } from "@colyseus/sdk";
+import type { ClientGameState } from "./types";
 
 const COLYSEUS_URL = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
 
-type EventHandler = (type: string, data: any) => void;
+type EventHandler = (type: string, data: Record<string, unknown>) => void;
 
 class ConnectionManager {
     private client: Client;
@@ -42,11 +43,15 @@ class ConnectionManager {
         return this.room;
     }
 
+    getState(): ClientGameState | null {
+        return this.room?.state as ClientGameState | null;
+    }
+
     getSessionId(): string {
         return this.room?.sessionId ?? '';
     }
 
-    send(type: string, data?: any): void {
+    send(type: string, data?: Record<string, unknown>): void {
         if (this.room) {
             this.room.send(type, data);
         }

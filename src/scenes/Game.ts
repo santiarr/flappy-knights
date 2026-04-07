@@ -133,6 +133,16 @@ export class Game extends Scene {
         this.createMuteIcon();
         this.createPauseButton();
 
+        // Ambient background elements
+        this.createEmbers();
+        this.createBatTexture();
+        this.batTimer = this.time.addEvent({
+            delay: Phaser.Math.Between(5000, 8000),
+            callback: () => this.spawnBat(),
+            loop: true,
+        });
+        this.createTorchGlows();
+
         // Start BGM
         audioManager.startBGM();
         EventBus.emit(Events.GAME_START);
@@ -879,6 +889,11 @@ export class Game extends Scene {
 
         // Near miss detection
         this.checkNearMisses();
+
+        // Torch glow pulse
+        for (const torch of this.torchGlows) {
+            torch.gfx.setAlpha(0.08 + Math.sin(time * 0.002 + torch.offset) * 0.06);
+        }
     }
 
     private createMuteIcon(): void {
@@ -1047,6 +1062,94 @@ export class Game extends Scene {
         return container;
     }
 
+    // --- Ambient background elements ---
+
+    private createEmbers(): void {
+        this.emberEmitter = this.add.particles(0, 0, 'particle', {
+            x: { min: 0, max: GAME.WIDTH },
+            y: LAVA.Y,
+            lifespan: { min: 2000, max: 4000 },
+            speedY: { min: -40, max: -15 },
+            speedX: { min: -10, max: 10 },
+            scale: { start: 0.3, end: 0.05 },
+            alpha: { start: 0.7, end: 0 },
+            tint: [0xff6600, 0xff4400, 0xffaa00, 0xff2200],
+            frequency: 150,
+            quantity: 1,
+        });
+        this.emberEmitter.setDepth(7);
+    }
+
+    private createBatTexture(): void {
+        const batGfx = this.add.graphics();
+        batGfx.fillStyle(0x1a0a2e);
+        batGfx.fillTriangle(0, 4, 4, 0, 4, 4);
+        batGfx.fillTriangle(4, 4, 4, 0, 8, 4);
+        batGfx.fillCircle(4, 4, 1.5);
+        batGfx.generateTexture('bat', 8, 8);
+        batGfx.destroy();
+    }
+
+    private spawnBat(): void {
+        const fromLeft = Math.random() > 0.5;
+        const startX = fromLeft ? -20 : GAME.WIDTH + 20;
+        const endX = fromLeft ? GAME.WIDTH + 20 : -20;
+        const startY = Phaser.Math.Between(50, 250);
+        const bat = this.add.sprite(startX, startY, 'bat');
+        bat.setAlpha(Phaser.Math.FloatBetween(0.3, 0.5));
+        bat.setDepth(-5);
+
+        const duration = Phaser.Math.Between(4000, 8000);
+        const flapAmplitude = Phaser.Math.Between(15, 30);
+        const flapSpeed = Phaser.Math.FloatBetween(0.005, 0.008);
+        const spawnTime = this.time.now;
+
+        this.tweens.add({
+            targets: bat,
+            x: endX,
+            duration,
+            onUpdate: () => {
+                const elapsed = this.time.now - spawnTime;
+                bat.y = startY + Math.sin(elapsed * flapSpeed) * flapAmplitude;
+            },
+            onComplete: () => {
+                bat.destroy();
+            },
+        });
+
+        // Randomize next bat delay
+        if (this.batTimer) {
+            this.batTimer.delay = Phaser.Math.Between(5000, 8000);
+        }
+    }
+
+    private createTorchGlows(): void {
+        const torchIndices = [2, 4, 6]; // lower-middle, middle, upper-left platforms
+        const platformPositions = PLATFORM.POSITIONS;
+
+        for (const idx of torchIndices) {
+            if (idx >= platformPositions.length) continue;
+            const plat = platformPositions[idx];
+            const cx = plat.x + plat.w * 0.5;
+            const cy = plat.y;
+
+            const gfx = this.add.graphics();
+            gfx.setDepth(4);
+
+            // Draw a radial gradient circle (concentric circles with decreasing alpha)
+            const radius = 60;
+            const steps = 10;
+            for (let i = steps; i >= 1; i--) {
+                const r = (radius / steps) * i;
+                const a = 0.15 * (1 - i / steps) + 0.02;
+                gfx.fillStyle(0xff8800, a);
+                gfx.fillCircle(cx, cy, r);
+            }
+
+            this.torchGlows.push({ gfx, offset: Math.random() * Math.PI * 2 });
+        }
+    }
+
     shutdown(): void {
         this.isPaused = false;
         audioManager.stopBGM();
@@ -1062,5 +1165,11 @@ export class Game extends Scene {
         if (this.joystickKnob) this.joystickKnob.destroy();
         if (this.pauseOverlay) this.pauseOverlay.destroy();
         if (this.escKey) this.escKey.removeAllListeners();
+        if (this.emberEmitter) this.emberEmitter.destroy();
+        if (this.batTimer) this.batTimer.destroy();
+        for (const torch of this.torchGlows) {
+            torch.gfx.destroy();
+        }
+        this.torchGlows = [];
     }
 }

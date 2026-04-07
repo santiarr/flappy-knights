@@ -71,7 +71,7 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.createRoom();
                 this.localPlayerId = room.sessionId;
-                this.roomCode = room.roomId;
+                this.roomCode = (room.state as any)?.code || room.roomId;
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to create room:', err);
@@ -93,7 +93,7 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.quickMatch();
                 this.localPlayerId = room.sessionId;
-                this.roomCode = room.roomId;
+                this.roomCode = (room.state as any)?.code || room.roomId;
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to quick match:', err);
@@ -206,7 +206,7 @@ export class MultiplayerLobby extends Scene {
 
         y += 80;
 
-        // Single text input box for Colyseus room IDs (alphanumeric, up to 9 chars)
+        // Single text input box for 4-letter room codes
         const boxW = 280;
         const boxH = 60;
         const boxCenterY = y;
@@ -227,7 +227,7 @@ export class MultiplayerLobby extends Scene {
 
         y += boxH * 0.5 + 20;
 
-        const hint = this.add.text(cx, y, 'Type the code exactly as shown (case-sensitive)', {
+        const hint = this.add.text(cx, y, 'Enter the 4-letter room code', {
             fontFamily: ARCADE_FONT, fontSize: '12px', color: MUTED_COLOR,
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(hint);
@@ -239,8 +239,8 @@ export class MultiplayerLobby extends Scene {
         htmlInput.type = 'text';
         htmlInput.autocomplete = 'off';
         htmlInput.autocapitalize = 'off';
-        htmlInput.maxLength = 9;
-        htmlInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.01;width:1px;height:1px;font-size:16px;z-index:9999;';
+        htmlInput.maxLength = 4;
+        htmlInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.01;width:1px;height:1px;font-size:16px;z-index:9999;text-transform:uppercase;';
         document.body.appendChild(htmlInput);
         htmlInput.focus();
 
@@ -251,19 +251,12 @@ export class MultiplayerLobby extends Scene {
         );
         boxGraphics.on('pointerdown', () => htmlInput.focus());
 
-        // Sync HTML input to Phaser text
-        htmlInput.addEventListener('input', () => {
-            this.codeInput = htmlInput.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 9);
-            htmlInput.value = this.codeInput;
-            inputText.setText(this.codeInput);
-        });
-
         const submitCode = async () => {
-            if (this.codeInput.length < 3) return;
+            if (this.codeInput.length !== 4) return;
             try {
                 const room = await connection.joinRoom(this.codeInput);
                 this.localPlayerId = room.sessionId;
-                this.roomCode = room.roomId;
+                this.roomCode = (room.state as any)?.code || room.roomId;
                 htmlInput.remove();
                 this.showWaiting();
             } catch (err) {
@@ -272,6 +265,17 @@ export class MultiplayerLobby extends Scene {
                 hint.setColor('#ff4444');
             }
         };
+
+        // Sync HTML input to Phaser text
+        htmlInput.addEventListener('input', () => {
+            this.codeInput = htmlInput.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4);
+            htmlInput.value = this.codeInput;
+            inputText.setText(this.codeInput);
+            // Auto-submit when 4 chars typed
+            if (this.codeInput.length === 4) {
+                submitCode();
+            }
+        });
 
         htmlInput.addEventListener('keydown', async (event: KeyboardEvent) => {
             if (event.key === 'Enter') submitCode();

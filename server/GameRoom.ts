@@ -267,7 +267,16 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   onCreate(options: any) {
     this.state = new GameRoomState();
-    console.log("GameRoom created");
+
+    // Generate short uppercase room code
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let code = "";
+    for (let i = 0; i < 4; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    this.setMetadata({ code });
+    this.state.code = code;
+    console.log("GameRoom created with code:", code);
   }
 
   onJoin(client: Client) {

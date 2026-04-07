@@ -42,4 +42,5 @@ export class GameRoomState extends Schema {
     @type("number") wave: number = 0;
     @type("string") phase: string = "waiting"; // waiting, countdown, playing, wave_transition, finished
     @type("number") countdown: number = 0;
+    @type("string") code: string = "";
 }

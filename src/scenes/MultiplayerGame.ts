@@ -426,7 +426,7 @@ export class MultiplayerGame extends Scene {
             let sprite = this.enemySprites.get(id);
             if (!sprite) {
                 // Create new enemy sprite
-                const prefix = ATLAS_PREFIX[e.type] || 'bounder';
+                const prefix = ATLAS_PREFIX[e.enemyType] || 'bounder';
                 const frames = this.textures.get(`${prefix}_idle`).getFrameNames().sort();
                 sprite = this.add.sprite(e.x, e.y, `${prefix}_idle`, frames[0]);
                 sprite.setScale(1.4).setDepth(9);

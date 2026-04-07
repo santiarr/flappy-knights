@@ -20,9 +20,13 @@ class ConnectionManager {
         return this.room;
     }
 
-    async joinRoom(roomId: string): Promise<Room> {
+    async joinRoom(code: string): Promise<Room> {
         this.disconnect();
-        this.room = await this.client.joinById(roomId);
+        // Find available rooms and match by code
+        const rooms = await this.client.getAvailableRooms("game");
+        const match = rooms.find(r => r.metadata?.code === code.toUpperCase());
+        if (!match) throw new Error("Room not found");
+        this.room = await this.client.joinById(match.roomId);
         this.setupRoomListeners();
         return this.room;
     }

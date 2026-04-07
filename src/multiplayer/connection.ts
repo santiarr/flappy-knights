@@ -1,70 +1,111 @@
-import PartySocket from "partysocket";
-import type { ClientMessage, ServerMessage } from "./types";
+import { Client, Room } from "@colyseus/sdk";
 
-const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST ?? "localhost:1999";
+const COLYSEUS_URL = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
 
-type MessageHandler = (msg: ServerMessage) => void;
+type EventHandler = (type: string, data: any) => void;
 
 class ConnectionManager {
-  private socket: PartySocket | null = null;
-  private handlers: MessageHandler[] = [];
+    private client: Client;
+    private room: Room | null = null;
+    private eventHandlers: EventHandler[] = [];
 
-  connect(roomCode: string): void {
-    this.disconnect();
-    this.socket = new PartySocket({
-      host: PARTYKIT_HOST,
-      room: roomCode,
-    });
-
-    this.socket.addEventListener("message", (event) => {
-      const msg = JSON.parse(event.data) as ServerMessage;
-      for (const handler of this.handlers) {
-        handler(msg);
-      }
-    });
-  }
-
-  connectMatchmaking(): void {
-    this.disconnect();
-    this.socket = new PartySocket({
-      host: PARTYKIT_HOST,
-      room: "queue",
-      party: "matchmaking",
-    });
-
-    this.socket.addEventListener("message", (event) => {
-      const msg = JSON.parse(event.data) as ServerMessage;
-      for (const handler of this.handlers) {
-        handler(msg);
-      }
-    });
-  }
-
-  send(msg: ClientMessage): void {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(msg));
+    constructor() {
+        this.client = new Client(COLYSEUS_URL);
     }
-  }
 
-  onMessage(handler: MessageHandler): void {
-    this.handlers.push(handler);
-  }
-
-  offMessage(handler: MessageHandler): void {
-    this.handlers = this.handlers.filter((h) => h !== handler);
-  }
-
-  disconnect(): void {
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
+    async createRoom(): Promise<Room> {
+        this.disconnect();
+        this.room = await this.client.create("game");
+        this.setupRoomListeners();
+        return this.room;
     }
-    this.handlers = [];
-  }
 
-  isConnected(): boolean {
-    return this.socket?.readyState === WebSocket.OPEN;
-  }
+    async joinRoom(roomId: string): Promise<Room> {
+        this.disconnect();
+        this.room = await this.client.joinById(roomId);
+        this.setupRoomListeners();
+        return this.room;
+    }
+
+    async quickMatch(): Promise<Room> {
+        this.disconnect();
+        this.room = await this.client.joinOrCreate("game");
+        this.setupRoomListeners();
+        return this.room;
+    }
+
+    getRoom(): Room | null {
+        return this.room;
+    }
+
+    getSessionId(): string {
+        return this.room?.sessionId ?? '';
+    }
+
+    send(type: string, data?: any): void {
+        if (this.room) {
+            this.room.send(type, data);
+        }
+    }
+
+    onEvent(handler: EventHandler): void {
+        this.eventHandlers.push(handler);
+    }
+
+    offEvent(handler: EventHandler): void {
+        this.eventHandlers = this.eventHandlers.filter(h => h !== handler);
+    }
+
+    private setupRoomListeners(): void {
+        if (!this.room) return;
+
+        // Listen for broadcast events from server (joust_win, enemy_killed, etc.)
+        this.room.onMessage("event", (data: { name: string; data?: any }) => {
+            for (const handler of this.eventHandlers) {
+                handler(data.name, data.data);
+            }
+        });
+
+        // Listen for match_over
+        this.room.onMessage("match_over", (data: any) => {
+            for (const handler of this.eventHandlers) {
+                handler("match_over", data);
+            }
+        });
+
+        // Listen for countdown
+        this.room.onMessage("countdown", (data: any) => {
+            for (const handler of this.eventHandlers) {
+                handler("countdown", data);
+            }
+        });
+
+        // Listen for rematch
+        this.room.onMessage("rematch", (data: any) => {
+            for (const handler of this.eventHandlers) {
+                handler("rematch", data);
+            }
+        });
+
+        // Listen for player_left
+        this.room.onMessage("player_left", (data: any) => {
+            for (const handler of this.eventHandlers) {
+                handler("player_left", data);
+            }
+        });
+    }
+
+    disconnect(): void {
+        if (this.room) {
+            this.room.leave();
+            this.room = null;
+        }
+        this.eventHandlers = [];
+    }
+
+    isConnected(): boolean {
+        return this.room !== null;
+    }
 }
 
 export const connection = new ConnectionManager();

@@ -1,13 +1,10 @@
 import { Scene } from 'phaser';
 import { GAME, SAFE_ZONE } from '../core/Constants';
 import { connection } from '../multiplayer/connection';
-import { generateRoomCode } from '../multiplayer/types';
-import type { ServerMessage } from '../multiplayer/types';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const TITLE_COLOR = '#ffd700';
 const SUB_COLOR = '#daa520';
-const BODY_COLOR = '#cccccc';
 const MUTED_COLOR = '#888888';
 
 export class MultiplayerLobby extends Scene {
@@ -15,7 +12,7 @@ export class MultiplayerLobby extends Scene {
     private localPlayerId = '';
     private roomCode = '';
     private codeInput = '';
-    private messageHandler: ((msg: ServerMessage) => void) | null = null;
+    private eventHandler: ((type: string, data: any) => void) | null = null;
     private dotTimer?: Phaser.Time.TimerEvent;
 
     constructor() {
@@ -42,9 +39,9 @@ export class MultiplayerLobby extends Scene {
         for (const el of this.elements) el.destroy();
         this.elements = [];
         if (this.input.keyboard) this.input.keyboard.removeAllListeners();
-        if (this.messageHandler) {
-            connection.offMessage(this.messageHandler);
-            this.messageHandler = null;
+        if (this.eventHandler) {
+            connection.offEvent(this.eventHandler);
+            this.eventHandler = null;
         }
         if (this.dotTimer) {
             this.dotTimer.destroy();
@@ -70,10 +67,15 @@ export class MultiplayerLobby extends Scene {
 
         y += 80;
 
-        const createBtn = this.createButton(cx, y, 'CREATE ROOM', 260, 46, () => {
-            this.roomCode = generateRoomCode();
-            connection.connect(this.roomCode);
-            this.showWaiting();
+        const createBtn = this.createButton(cx, y, 'CREATE ROOM', 260, 46, async () => {
+            try {
+                const room = await connection.createRoom();
+                this.localPlayerId = room.sessionId;
+                this.roomCode = room.roomId;
+                this.showWaiting();
+            } catch (err) {
+                console.error('Failed to create room:', err);
+            }
         });
         this.elements.push(createBtn);
 
@@ -86,9 +88,17 @@ export class MultiplayerLobby extends Scene {
 
         y += 60;
 
-        const quickBtn = this.createButton(cx, y, 'QUICK MATCH', 260, 46, () => {
-            connection.connectMatchmaking();
+        const quickBtn = this.createButton(cx, y, 'QUICK MATCH', 260, 46, async () => {
             this.showSearching();
+            try {
+                const room = await connection.quickMatch();
+                this.localPlayerId = room.sessionId;
+                this.roomCode = room.roomId;
+                this.showWaiting();
+            } catch (err) {
+                console.error('Failed to quick match:', err);
+                this.showMenu();
+            }
         });
         this.elements.push(quickBtn);
 
@@ -102,7 +112,7 @@ export class MultiplayerLobby extends Scene {
     }
 
     // ========================================
-    // STATE: Waiting (created room)
+    // STATE: Waiting (created room or joined)
     // ========================================
     private showWaiting(): void {
         this.clearAll();
@@ -124,11 +134,12 @@ export class MultiplayerLobby extends Scene {
 
         y += 80;
 
-        // Room code display — large spaced letters
-        const codeText = this.add.text(cx, y, this.roomCode.split('').join('  '), {
-            fontFamily: ARCADE_FONT, fontSize: '56px', color: TITLE_COLOR,
+        // Room code display — show roomId with spaced letters
+        const displayCode = this.roomCode.toUpperCase();
+        const codeText = this.add.text(cx, y, displayCode.split('').join('  '), {
+            fontFamily: ARCADE_FONT, fontSize: '40px', color: TITLE_COLOR,
             stroke: '#000000', strokeThickness: 8, fontStyle: 'bold',
-            letterSpacing: 12,
+            letterSpacing: 8,
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(codeText);
 
@@ -147,18 +158,35 @@ export class MultiplayerLobby extends Scene {
         });
         this.elements.push(cancelBtn);
 
-        // Listen for server messages
-        this.messageHandler = (msg: ServerMessage) => {
-            if (msg.type === 'connected') {
-                this.localPlayerId = msg.id;
-            } else if (msg.type === 'player_joined' && msg.playerCount >= 2) {
-                this.scene.start('MultiplayerGame', {
-                    roomCode: this.roomCode,
-                    localPlayerId: this.localPlayerId,
-                });
-            }
-        };
-        connection.onMessage(this.messageHandler);
+        // Listen for state changes via room — when 2 players are in, start the game
+        const room = connection.getRoom();
+        if (room) {
+            // Check if players collection exists on state and listen for additions
+            const checkPlayers = () => {
+                if (room.state && room.state.players && room.state.players.size >= 2) {
+                    this.scene.start('MultiplayerGame', {
+                        localPlayerId: this.localPlayerId,
+                        roomCode: this.roomCode,
+                    });
+                }
+            };
+
+            // Listen for player_joined via server message
+            this.eventHandler = (type: string, _data: any) => {
+                if (type === 'player_joined') {
+                    checkPlayers();
+                }
+            };
+            connection.onEvent(this.eventHandler);
+
+            // Also listen via onStateChange for broader compatibility
+            room.onStateChange(() => {
+                checkPlayers();
+            });
+
+            // Check immediately in case both players are already in
+            checkPlayers();
+        }
     }
 
     // ========================================
@@ -179,44 +207,33 @@ export class MultiplayerLobby extends Scene {
 
         y += 80;
 
-        // 4 input boxes
-        const boxSize = 60;
-        const gap = 20;
-        const totalWidth = boxSize * 4 + gap * 3;
-        const startX = cx - totalWidth * 0.5 + boxSize * 0.5;
-        const boxCenterY = y; // center Y of boxes
-        const boxTop = boxCenterY - boxSize * 0.5; // top edge for drawing
+        // Single text input box for Colyseus room IDs (alphanumeric, up to 9 chars)
+        const boxW = 280;
+        const boxH = 60;
+        const boxCenterY = y;
+        const boxTop = boxCenterY - boxH * 0.5;
 
-        const boxGraphics: Phaser.GameObjects.Graphics[] = [];
-        const boxTexts: Phaser.GameObjects.Text[] = [];
+        const boxGraphics = this.add.graphics();
+        boxGraphics.fillStyle(0x1a1a3a);
+        boxGraphics.fillRoundedRect(cx - boxW * 0.5, boxTop, boxW, boxH, 6);
+        boxGraphics.lineStyle(2, 0x7777cc);
+        boxGraphics.strokeRoundedRect(cx - boxW * 0.5, boxTop, boxW, boxH, 6);
+        this.elements.push(boxGraphics);
 
-        for (let i = 0; i < 4; i++) {
-            const bx = startX + i * (boxSize + gap);
+        const inputText = this.add.text(cx, boxCenterY, '', {
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: TITLE_COLOR,
+            fontStyle: 'bold', letterSpacing: 6,
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(inputText);
 
-            const box = this.add.graphics();
-            box.fillStyle(0x1a1a3a);
-            box.fillRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
-            box.lineStyle(2, 0x5555aa);
-            box.strokeRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
-            this.elements.push(box);
-            boxGraphics.push(box);
+        y += boxH * 0.5 + 20;
 
-            const charText = this.add.text(bx, boxCenterY, '', {
-                fontFamily: ARCADE_FONT, fontSize: '36px', color: TITLE_COLOR,
-                fontStyle: 'bold',
-            }).setOrigin(0.5).setDepth(10);
-            this.elements.push(charText);
-            boxTexts.push(charText);
-        }
-
-        y += boxSize * 0.5 + 30;
-
-        const hint = this.add.text(cx, y, 'Type A-Z to enter code', {
+        const hint = this.add.text(cx, y, 'Type the room code, then press ENTER', {
             fontFamily: ARCADE_FONT, fontSize: '12px', color: MUTED_COLOR,
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(hint);
 
-        y += 60;
+        y += 50;
 
         const cancelBtn = this.createButton(cx, y, 'CANCEL', 180, 42, () => {
             connection.disconnect();
@@ -226,50 +243,37 @@ export class MultiplayerLobby extends Scene {
 
         // Keyboard input
         if (this.input.keyboard) {
-            this.input.keyboard.on('keydown', (event: KeyboardEvent) => {
-                const key = event.key.toUpperCase();
+            this.input.keyboard.on('keydown', async (event: KeyboardEvent) => {
+                const key = event.key;
 
-                if (event.key === 'Backspace' && this.codeInput.length > 0) {
+                if (key === 'Backspace' && this.codeInput.length > 0) {
                     this.codeInput = this.codeInput.slice(0, -1);
-                    this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, boxTop, gap);
+                    inputText.setText(this.codeInput);
                     return;
                 }
 
-                if (this.codeInput.length >= 4) return;
-                if (key.length !== 1 || key < 'A' || key > 'Z') return;
+                if (key === 'Enter' && this.codeInput.length >= 3) {
+                    // Submit the room code
+                    try {
+                        const room = await connection.joinRoom(this.codeInput);
+                        this.localPlayerId = room.sessionId;
+                        this.roomCode = room.roomId;
+                        this.showWaiting();
+                    } catch (err) {
+                        console.error('Failed to join room:', err);
+                        hint.setText('Room not found. Try again.');
+                        hint.setColor('#ff4444');
+                    }
+                    return;
+                }
+
+                if (this.codeInput.length >= 9) return;
+                // Accept alphanumeric characters
+                if (key.length !== 1 || !/[a-zA-Z0-9]/.test(key)) return;
 
                 this.codeInput += key;
-                this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, boxTop, gap);
-
-                // Auto-submit when 4 chars entered
-                if (this.codeInput.length === 4) {
-                    this.roomCode = this.codeInput;
-                    connection.connect(this.roomCode);
-                    this.showWaiting();
-                }
+                inputText.setText(this.codeInput);
             });
-        }
-    }
-
-    private updateBoxes(
-        texts: Phaser.GameObjects.Text[],
-        graphics: Phaser.GameObjects.Graphics[],
-        boxSize: number,
-        startX: number,
-        boxTop: number,
-        gap: number,
-    ): void {
-        for (let i = 0; i < 4; i++) {
-            const bx = startX + i * (boxSize + gap);
-            texts[i].setText(this.codeInput[i] ?? '');
-
-            const filled = i < this.codeInput.length;
-            const active = i === this.codeInput.length;
-            graphics[i].clear();
-            graphics[i].fillStyle(filled ? 0x2a2a5a : 0x1a1a3a);
-            graphics[i].fillRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
-            graphics[i].lineStyle(2, active ? 0x7777cc : 0x5555aa);
-            graphics[i].strokeRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
         }
     }
 
@@ -313,19 +317,6 @@ export class MultiplayerLobby extends Scene {
             this.showMenu();
         });
         this.elements.push(cancelBtn);
-
-        // Listen for matchmaking result
-        this.messageHandler = (msg: ServerMessage) => {
-            if (msg.type === 'matched') {
-                this.roomCode = msg.roomCode;
-                connection.disconnect();
-                connection.connect(this.roomCode);
-                this.showWaiting();
-            } else if (msg.type === 'connected') {
-                this.localPlayerId = msg.id;
-            }
-        };
-        connection.onMessage(this.messageHandler);
     }
 
     // ========================================

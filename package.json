@@ -21,8 +21,6 @@
         "deploy": "npm run build && ~/.agents/skills/here-now/scripts/publish.sh dist/ --slug woody-torque-pe2r",
         "test": "npx playwright test",
         "test:ui": "npx playwright test --ui",
-        "party:dev": "npx partykit dev",
-        "party:deploy": "npx partykit deploy",
         "server:dev": "npx ts-node server/index.ts"
     },
     "devDependencies": {

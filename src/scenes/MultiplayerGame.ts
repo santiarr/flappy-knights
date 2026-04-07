@@ -1,7 +1,6 @@
 import { Scene } from 'phaser';
 import { GAME, SAFE_ZONE, IS_TOUCH, JOYSTICK } from '../core/Constants';
 import { connection } from '../multiplayer/connection';
-import type { ServerMessage, GameSnapshot } from '../multiplayer/types';
 import { Platform } from '../objects/Platform';
 import { LavaPit } from '../objects/LavaPit';
 import { capture } from '../analytics';
@@ -24,11 +23,6 @@ export class MultiplayerGame extends Scene {
     private opponentSprite!: Phaser.GameObjects.Sprite;
     private enemySprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
     private eggSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
-
-    // State interpolation
-    private prevState: GameSnapshot | null = null;
-    private currentState: GameSnapshot | null = null;
-    private interpStart = 0;
 
     // HUD
     private hudLocalScore!: Phaser.GameObjects.Text;
@@ -54,8 +48,8 @@ export class MultiplayerGame extends Scene {
     private joystickOriginX = 0;
     private joystickOriginY = 0;
 
-    // Message handler ref for cleanup
-    private messageHandler: ((msg: ServerMessage) => void) | null = null;
+    // Event handler ref for cleanup
+    private eventHandler: ((type: string, data: any) => void) | null = null;
 
     constructor() {
         super('MultiplayerGame');
@@ -64,6 +58,9 @@ export class MultiplayerGame extends Scene {
     create(data: { localPlayerId: string; roomCode: string }): void {
         this.localPlayerId = data.localPlayerId;
         this.roomCode = data.roomCode;
+
+        const room = connection.getRoom();
+        if (!room) return;
 
         // Background (same cave tiles as single-player)
         this.cameras.main.setBackgroundColor(GAME.BACKGROUND_COLOR);
@@ -99,12 +96,14 @@ export class MultiplayerGame extends Scene {
         // HUD - dual score display
         this.createHUD();
 
-        // Listen for server messages
-        this.messageHandler = (msg: ServerMessage) => this.handleServerMessage(msg);
-        connection.onMessage(this.messageHandler);
+        // Listen for game events via connection
+        this.eventHandler = (type: string, eventData: any) => {
+            this.handleGameEvent(type, eventData);
+        };
+        connection.onEvent(this.eventHandler);
 
         // Tell server we're ready
-        connection.send({ type: 'ready' });
+        connection.send("ready");
 
         // Start music
         audioManager.startBGM();
@@ -146,7 +145,7 @@ export class MultiplayerGame extends Scene {
             fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
         }).setDepth(100);
 
-        this.hudLocalLives = this.add.text(10, hudY + 22, '♥♥♥', {
+        this.hudLocalLives = this.add.text(10, hudY + 22, '\u2665\u2665\u2665', {
             fontFamily: ARCADE_FONT, fontSize: '14px', color: '#ff4444',
             stroke: '#000000', strokeThickness: 2,
         }).setDepth(100);
@@ -163,40 +162,46 @@ export class MultiplayerGame extends Scene {
             fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
         }).setOrigin(1, 0).setDepth(100);
 
-        this.hudOpponentLives = this.add.text(GAME.WIDTH - 10, hudY + 22, '♥♥♥', {
+        this.hudOpponentLives = this.add.text(GAME.WIDTH - 10, hudY + 22, '\u2665\u2665\u2665', {
             fontFamily: ARCADE_FONT, fontSize: '14px', color: '#ff4444',
             stroke: '#000000', strokeThickness: 2,
         }).setOrigin(1, 0).setDepth(100);
     }
 
-    private handleServerMessage(msg: ServerMessage): void {
-        switch (msg.type) {
-            case 'state':
-                this.prevState = this.currentState;
-                this.currentState = msg.state;
-                this.interpStart = Date.now();
-                break;
-
+    private handleGameEvent(type: string, data?: any): void {
+        switch (type) {
             case 'countdown':
-                this.showCountdown(msg.seconds);
+                this.showCountdown(data?.seconds ?? data);
                 break;
 
-            case 'event':
-                this.handleGameEvent(msg.name, msg.data);
+            case 'joust_win': {
+                const winnerId = data?.winner as string;
+                const isLocal = winnerId === this.localPlayerId;
+                this.showFloatingText(
+                    isLocal ? '+1000 JOUST!' : 'JOUSTED!',
+                    isLocal ? '#44ff44' : '#ff4444'
+                );
+                break;
+            }
+            case 'joust_bounce':
+                this.showFloatingText('CLASH!', '#ffdd44');
+                break;
+            case 'wave_complete':
+                this.showWaveText();
                 break;
 
             case 'match_over': {
-                const localPlayer = msg.players.find(p => p.id === this.localPlayerId);
+                const localPlayer = data.players?.find((p: any) => p.id === this.localPlayerId);
                 capture('multiplayer_game_over', {
                     roomCode: this.roomCode,
-                    isWinner: msg.winner === this.localPlayerId,
+                    isWinner: data.winner === this.localPlayerId,
                     score: localPlayer?.score ?? 0,
                     wave: localPlayer?.wave ?? 0,
                 });
                 this.shutdown();
                 this.scene.start('MultiplayerResults', {
-                    winner: msg.winner,
-                    players: msg.players,
+                    winner: data.winner,
+                    players: data.players,
                     localPlayerId: this.localPlayerId,
                 });
                 break;
@@ -226,26 +231,6 @@ export class MultiplayerGame extends Scene {
         });
     }
 
-    private handleGameEvent(name: string, data?: Record<string, unknown>): void {
-        switch (name) {
-            case 'joust_win': {
-                const winnerId = data?.winner as string;
-                const isLocal = winnerId === this.localPlayerId;
-                this.showFloatingText(
-                    isLocal ? '+1000 JOUST!' : 'JOUSTED!',
-                    isLocal ? '#44ff44' : '#ff4444'
-                );
-                break;
-            }
-            case 'joust_bounce':
-                this.showFloatingText('CLASH!', '#ffdd44');
-                break;
-            case 'wave_complete':
-                this.showWaveText();
-                break;
-        }
-    }
-
     private showFloatingText(text: string, color: string): void {
         const t = this.add.text(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.35, text, {
             fontFamily: ARCADE_FONT, fontSize: '28px', color,
@@ -260,10 +245,12 @@ export class MultiplayerGame extends Scene {
     }
 
     private showWaveText(): void {
-        if (!this.currentState) return;
+        const room = connection.getRoom();
+        if (!room?.state) return;
         if (this.waveText) this.waveText.destroy();
 
-        this.waveText = this.add.text(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.38, `WAVE ${this.currentState.wave}`, {
+        const wave = room.state.wave ?? 1;
+        this.waveText = this.add.text(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.38, `WAVE ${wave}`, {
             fontFamily: ARCADE_FONT, fontSize: '52px', color: '#ffd700',
             stroke: '#000000', strokeThickness: 8, fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(20);
@@ -316,10 +303,10 @@ export class MultiplayerGame extends Scene {
 
         // Send input to server (only send changes to reduce traffic)
         if (doFlap) {
-            connection.send({ type: 'input', action: 'flap' });
+            connection.send("input", { action: "flap" });
         }
         if (moveDir !== this.lastSentInput) {
-            connection.send({ type: 'input', action: moveDir });
+            connection.send("input", { action: moveDir });
             this.lastSentInput = moveDir;
         }
     }
@@ -376,95 +363,85 @@ export class MultiplayerGame extends Scene {
 
     update(_time: number, _delta: number): void {
         this.handleInput();
-        this.renderFromServerState();
+        this.renderFromState();
     }
 
-    private renderFromServerState(): void {
-        if (!this.currentState) return;
-
-        const t = this.prevState
-            ? Math.min((Date.now() - this.interpStart) / 50, 1) // 50ms = 20hz
-            : 1;
+    private renderFromState(): void {
+        const room = connection.getRoom();
+        if (!room?.state) return;
+        const state = room.state;
 
         // Render players
-        for (const ps of this.currentState.players) {
-            const sprite = ps.id === this.localPlayerId ? this.localSprite : this.opponentSprite;
+        if (state.players) {
+            state.players.forEach((player: any, sessionId: string) => {
+                const sprite = sessionId === this.localPlayerId ? this.localSprite : this.opponentSprite;
 
-            if (ps.isRespawning) {
-                sprite.setVisible(false);
-                continue;
-            }
-            sprite.setVisible(true);
+                if (player.isRespawning) {
+                    sprite.setVisible(false);
+                    return;
+                }
+                sprite.setVisible(true);
 
-            // Interpolate position
-            const prev = this.prevState?.players.find(p => p.id === ps.id);
-            if (prev && t < 1) {
-                sprite.x = Phaser.Math.Linear(prev.x, ps.x, t);
-                sprite.y = Phaser.Math.Linear(prev.y, ps.y, t);
-            } else {
-                sprite.x = ps.x;
-                sprite.y = ps.y;
-            }
+                sprite.x = player.x;
+                sprite.y = player.y;
+                sprite.setFlipX(player.flipX);
 
-            sprite.setFlipX(ps.flipX);
+                // Invulnerability flash
+                if (player.isInvulnerable) {
+                    sprite.setAlpha(Math.sin(Date.now() * 0.01) > 0 ? 1 : 0.3);
+                } else {
+                    sprite.setAlpha(1);
+                }
 
-            // Invulnerability flash
-            if (ps.isInvulnerable) {
-                sprite.setAlpha(Math.sin(Date.now() * 0.01) > 0 ? 1 : 0.3);
-            } else {
-                sprite.setAlpha(1);
-            }
-
-            // Animation
-            if (sprite.anims.currentAnim?.key !== ps.anim) {
-                sprite.play(ps.anim, true);
-            }
+                // Animation
+                const anim = player.anim;
+                if (anim && sprite.anims.currentAnim?.key !== anim) {
+                    sprite.play(anim, true);
+                }
+            });
         }
 
         // Render enemies
-        this.syncEnemySprites(this.currentState.enemies, t);
+        if (state.enemies) {
+            this.syncEnemySprites(state.enemies);
+        }
 
         // Render eggs
-        this.syncEggSprites(this.currentState.eggs);
+        if (state.eggs) {
+            this.syncEggSprites(state.eggs);
+        }
 
         // Update HUD
         this.updateHUD();
     }
 
-    private syncEnemySprites(enemies: { id: number; type: string; x: number; y: number; flipX: boolean; anim: string; active: boolean }[], t: number): void {
+    private syncEnemySprites(enemies: any): void {
         const activeIds = new Set<number>();
 
-        for (const e of enemies) {
-            if (!e.active) continue;
-            activeIds.add(e.id);
+        enemies.forEach((e: any) => {
+            if (!e.active) return;
+            const id = e.id;
+            activeIds.add(id);
 
-            let sprite = this.enemySprites.get(e.id);
+            let sprite = this.enemySprites.get(id);
             if (!sprite) {
                 // Create new enemy sprite
                 const prefix = ATLAS_PREFIX[e.type] || 'bounder';
                 const frames = this.textures.get(`${prefix}_idle`).getFrameNames().sort();
                 sprite = this.add.sprite(e.x, e.y, `${prefix}_idle`, frames[0]);
                 sprite.setScale(1.4).setDepth(9);
-                this.enemySprites.set(e.id, sprite);
+                this.enemySprites.set(id, sprite);
             }
 
-            // Interpolate
-            const prev = this.prevState?.enemies.find(pe => pe.id === e.id);
-            if (prev && t < 1) {
-                sprite.x = Phaser.Math.Linear(prev.x, e.x, t);
-                sprite.y = Phaser.Math.Linear(prev.y, e.y, t);
-            } else {
-                sprite.x = e.x;
-                sprite.y = e.y;
-            }
-
+            sprite.x = e.x;
+            sprite.y = e.y;
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 
-            if (sprite.anims.currentAnim?.key !== e.anim) {
+            if (e.anim && sprite.anims.currentAnim?.key !== e.anim) {
                 sprite.play(e.anim, true);
             }
-        }
+        });
 
         // Hide sprites for enemies no longer active
         for (const [id, sprite] of this.enemySprites) {
@@ -474,24 +451,25 @@ export class MultiplayerGame extends Scene {
         }
     }
 
-    private syncEggSprites(eggs: { id: number; type: string; x: number; y: number; active: boolean }[]): void {
+    private syncEggSprites(eggs: any): void {
         const activeIds = new Set<number>();
 
-        for (const e of eggs) {
-            if (!e.active) continue;
-            activeIds.add(e.id);
+        eggs.forEach((e: any) => {
+            if (!e.active) return;
+            const id = e.id;
+            activeIds.add(id);
 
-            let sprite = this.eggSprites.get(e.id);
+            let sprite = this.eggSprites.get(id);
             if (!sprite) {
                 sprite = this.add.sprite(e.x, e.y, 'egg');
                 sprite.setDepth(5);
-                this.eggSprites.set(e.id, sprite);
+                this.eggSprites.set(id, sprite);
             }
 
             sprite.x = e.x;
             sprite.y = e.y;
             sprite.setVisible(true);
-        }
+        });
 
         for (const [id, sprite] of this.eggSprites) {
             if (!activeIds.has(id)) {
@@ -501,28 +479,30 @@ export class MultiplayerGame extends Scene {
     }
 
     private updateHUD(): void {
-        if (!this.currentState) return;
+        const room = connection.getRoom();
+        if (!room?.state) return;
+        const state = room.state;
 
-        const local = this.currentState.players.find(p => p.id === this.localPlayerId);
-        const opponent = this.currentState.players.find(p => p.id !== this.localPlayerId);
-
-        if (local) {
-            this.hudLocalScore.setText(`${local.score}`);
-            this.hudLocalLives.setText('\u2665'.repeat(Math.max(0, local.lives)));
+        if (state.players) {
+            state.players.forEach((player: any, sessionId: string) => {
+                if (sessionId === this.localPlayerId) {
+                    this.hudLocalScore.setText(`${player.score}`);
+                    this.hudLocalLives.setText('\u2665'.repeat(Math.max(0, player.lives)));
+                } else {
+                    this.hudOpponentScore.setText(`${player.score}`);
+                    this.hudOpponentLives.setText('\u2665'.repeat(Math.max(0, player.lives)));
+                }
+            });
         }
-        if (opponent) {
-            this.hudOpponentScore.setText(`${opponent.score}`);
-            this.hudOpponentLives.setText('\u2665'.repeat(Math.max(0, opponent.lives)));
-        }
 
-        this.hudWave.setText(`W${this.currentState.wave}`);
+        this.hudWave.setText(`W${state.wave ?? 1}`);
     }
 
     shutdown(): void {
         audioManager.stopBGM();
-        if (this.messageHandler) {
-            connection.offMessage(this.messageHandler);
-            this.messageHandler = null;
+        if (this.eventHandler) {
+            connection.offEvent(this.eventHandler);
+            this.eventHandler = null;
         }
         if (this.joystickGraphics) this.joystickGraphics.destroy();
         if (this.joystickKnob) this.joystickKnob.destroy();

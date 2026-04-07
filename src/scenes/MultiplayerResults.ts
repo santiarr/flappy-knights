@@ -1,13 +1,13 @@
 import Phaser, { Scene } from 'phaser';
 import { GAME, SAFE_ZONE } from '../core/Constants';
 import { connection } from '../multiplayer/connection';
-import type { PlayerResult, ServerMessage } from '../multiplayer/types';
+import type { PlayerResult } from '../multiplayer/types';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 
 export class MultiplayerResults extends Scene {
     private particleRain?: Phaser.GameObjects.Particles.ParticleEmitter;
-    private messageHandler?: (msg: ServerMessage) => void;
+    private eventHandler?: (type: string, data: any) => void;
     private rematchPending = false;
     private opponentRematchPending = false;
     private rematchStatusText?: Phaser.GameObjects.Text;
@@ -96,7 +96,7 @@ export class MultiplayerResults extends Scene {
         y += 190;
 
         // REMATCH button
-        const rematchBtn = this.createButton(cx - 110, y, 180, 44, 'REMATCH', '#ffd700', () => {
+        this.createButton(cx - 110, y, 180, 44, 'REMATCH', '#ffd700', () => {
             this.handleRematch();
         });
 
@@ -113,8 +113,8 @@ export class MultiplayerResults extends Scene {
         });
 
         // Listen for rematch messages from opponent
-        this.messageHandler = (msg: ServerMessage) => {
-            if (msg.type === 'rematch') {
+        this.eventHandler = (type: string, _eventData: any) => {
+            if (type === 'rematch') {
                 this.opponentRematchPending = true;
                 if (this.rematchPending) {
                     // Both players want rematch — server will start a new match
@@ -125,7 +125,7 @@ export class MultiplayerResults extends Scene {
                 }
             }
         };
-        connection.onMessage(this.messageHandler);
+        connection.onEvent(this.eventHandler);
     }
 
     private buildPlayerColumn(x: number, startY: number, label: string, labelColor: string, player: PlayerResult): void {
@@ -254,7 +254,7 @@ export class MultiplayerResults extends Scene {
     private handleRematch(): void {
         if (this.rematchPending) return;
         this.rematchPending = true;
-        connection.send({ type: 'rematch' });
+        connection.send("rematch");
 
         if (this.rematchStatusText) {
             if (this.opponentRematchPending) {
@@ -274,9 +274,9 @@ export class MultiplayerResults extends Scene {
     }
 
     shutdown(): void {
-        if (this.messageHandler) {
-            connection.offMessage(this.messageHandler);
-            this.messageHandler = undefined;
+        if (this.eventHandler) {
+            connection.offEvent(this.eventHandler);
+            this.eventHandler = undefined;
         }
         if (this.particleRain) {
             this.particleRain.destroy();

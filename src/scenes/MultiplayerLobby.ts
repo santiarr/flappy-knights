@@ -241,40 +241,71 @@ export class MultiplayerLobby extends Scene {
         });
         this.elements.push(cancelBtn);
 
-        // Keyboard input
-        if (this.input.keyboard) {
-            this.input.keyboard.on('keydown', async (event: KeyboardEvent) => {
-                const key = event.key;
+        // Hidden HTML input for mobile keyboard support
+        const htmlInput = document.createElement('input');
+        htmlInput.type = 'text';
+        htmlInput.autocomplete = 'off';
+        htmlInput.autocapitalize = 'characters';
+        htmlInput.maxLength = 9;
+        htmlInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.01;width:1px;height:1px;font-size:16px;z-index:9999;';
+        document.body.appendChild(htmlInput);
+        htmlInput.focus();
 
-                if (key === 'Backspace' && this.codeInput.length > 0) {
-                    this.codeInput = this.codeInput.slice(0, -1);
-                    inputText.setText(this.codeInput);
-                    return;
+        // Tap on box to refocus (mobile)
+        boxGraphics.setInteractive(
+            new Phaser.Geom.Rectangle(cx - boxW * 0.5, boxTop, boxW, boxH),
+            Phaser.Geom.Rectangle.Contains
+        );
+        boxGraphics.on('pointerdown', () => htmlInput.focus());
+
+        // Sync HTML input to Phaser text
+        htmlInput.addEventListener('input', () => {
+            this.codeInput = htmlInput.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 9);
+            htmlInput.value = this.codeInput;
+            inputText.setText(this.codeInput);
+        });
+
+        htmlInput.addEventListener('keydown', async (event: KeyboardEvent) => {
+            if (event.key === 'Enter' && this.codeInput.length >= 3) {
+                try {
+                    const room = await connection.joinRoom(this.codeInput);
+                    this.localPlayerId = room.sessionId;
+                    this.roomCode = room.roomId;
+                    htmlInput.remove();
+                    this.showWaiting();
+                } catch (err) {
+                    console.error('Failed to join room:', err);
+                    hint.setText('Room not found. Try again.');
+                    hint.setColor('#ff4444');
                 }
+            }
+        });
 
-                if (key === 'Enter' && this.codeInput.length >= 3) {
-                    // Submit the room code
-                    try {
-                        const room = await connection.joinRoom(this.codeInput);
-                        this.localPlayerId = room.sessionId;
-                        this.roomCode = room.roomId;
-                        this.showWaiting();
-                    } catch (err) {
-                        console.error('Failed to join room:', err);
-                        hint.setText('Room not found. Try again.');
-                        hint.setColor('#ff4444');
-                    }
-                    return;
-                }
+        // Add a JOIN button for mobile (no Enter key on some keyboards)
+        const joinY = y;
+        y += 50;
+        const joinBtn = this.createButton(cx, joinY, 'JOIN', 120, 42, async () => {
+            if (this.codeInput.length < 3) return;
+            try {
+                const room = await connection.joinRoom(this.codeInput);
+                this.localPlayerId = room.sessionId;
+                this.roomCode = room.roomId;
+                htmlInput.remove();
+                this.showWaiting();
+            } catch (err) {
+                console.error('Failed to join room:', err);
+                hint.setText('Room not found. Try again.');
+                hint.setColor('#ff4444');
+            }
+        });
+        this.elements.push(joinBtn);
 
-                if (this.codeInput.length >= 9) return;
-                // Accept alphanumeric characters
-                if (key.length !== 1 || !/[a-zA-Z0-9]/.test(key)) return;
-
-                this.codeInput += key;
-                inputText.setText(this.codeInput);
-            });
-        }
+        // Clean up HTML input when leaving this state
+        const origClear = this.clearAll.bind(this);
+        this.clearAll = () => {
+            htmlInput.remove();
+            origClear();
+        };
     }
 
     // ========================================

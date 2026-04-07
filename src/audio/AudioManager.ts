@@ -3,15 +3,20 @@ import { NotePattern } from './music';
 
 type SfxFn = (ctx: AudioContext, dest: AudioNode) => void;
 
+const BGM_VOLUME = 0.1;
+const TITLE_VOLUME = 0.15;
+
 class AudioManager {
     private ctx: AudioContext | null = null;
     private masterGain: GainNode | null = null;
     private previousVolume = 0.3;
     private initialized = false;
 
-    // BGM state
+    // Music state
     private bgmElement: HTMLAudioElement | null = null;
+    private titleElement: HTMLAudioElement | null = null;
     private bgmPlaying = false;
+    private titlePlaying = false;
 
     init(): void {
         if (this.initialized) return;
@@ -46,20 +51,40 @@ class AudioManager {
         }
     }
 
+    startTitleMusic(): void {
+        if (this.titlePlaying) return;
+        this.stopBGM();
+        this.titlePlaying = true;
+
+        if (!this.titleElement) {
+            this.titleElement = new Audio('assets/audio/title.mp3');
+            this.titleElement.loop = true;
+        }
+        this.titleElement.volume = GameState.isMuted ? 0 : TITLE_VOLUME;
+        this.titleElement.currentTime = 0;
+        this.titleElement.play().catch(() => {});
+    }
+
+    stopTitleMusic(): void {
+        this.titlePlaying = false;
+        if (this.titleElement) {
+            this.titleElement.pause();
+            this.titleElement.currentTime = 0;
+        }
+    }
+
     startBGM(): void {
         if (this.bgmPlaying) return;
+        this.stopTitleMusic();
         this.bgmPlaying = true;
 
         if (!this.bgmElement) {
             this.bgmElement = new Audio('assets/audio/bgm.mp3');
             this.bgmElement.loop = true;
-            this.bgmElement.volume = GameState.isMuted ? 0 : this.previousVolume;
         }
-
+        this.bgmElement.volume = GameState.isMuted ? 0 : BGM_VOLUME;
         this.bgmElement.currentTime = 0;
-        this.bgmElement.play().catch(() => {
-            // Autoplay blocked — will play on next user interaction
-        });
+        this.bgmElement.play().catch(() => {});
     }
 
     stopBGM(): void {
@@ -82,9 +107,11 @@ class AudioManager {
                 this.masterGain.gain.value = 0;
             }
             if (this.bgmElement) this.bgmElement.volume = 0;
+            if (this.titleElement) this.titleElement.volume = 0;
         } else {
             if (this.masterGain) this.masterGain.gain.value = this.previousVolume;
-            if (this.bgmElement) this.bgmElement.volume = this.previousVolume;
+            if (this.bgmElement && this.bgmPlaying) this.bgmElement.volume = BGM_VOLUME;
+            if (this.titleElement && this.titlePlaying) this.titleElement.volume = TITLE_VOLUME;
         }
     }
 

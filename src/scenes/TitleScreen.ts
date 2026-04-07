@@ -1,6 +1,7 @@
 import Phaser, { Scene } from 'phaser';
 import { GAME, SAFE_ZONE, IS_TOUCH } from '../core/Constants';
 import { capture } from '../analytics';
+import { audioManager } from '../audio/AudioManager';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const TITLE_COLOR = '#ffd700';
@@ -42,6 +43,8 @@ export class TitleScreen extends Scene {
                     .setDepth(-10).setAlpha(0.5);
             }
         }
+
+        audioManager.startTitleMusic();
 
         if (isFirstPlay()) {
             this.showTutorial();

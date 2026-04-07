@@ -232,13 +232,7 @@ export class MultiplayerLobby extends Scene {
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(hint);
 
-        y += 50;
-
-        const cancelBtn = this.createButton(cx, y, 'CANCEL', 180, 42, () => {
-            connection.disconnect();
-            this.showMenu();
-        });
-        this.elements.push(cancelBtn);
+        y += 40;
 
         // Hidden HTML input for mobile keyboard support
         const htmlInput = document.createElement('input');
@@ -264,26 +258,7 @@ export class MultiplayerLobby extends Scene {
             inputText.setText(this.codeInput);
         });
 
-        htmlInput.addEventListener('keydown', async (event: KeyboardEvent) => {
-            if (event.key === 'Enter' && this.codeInput.length >= 3) {
-                try {
-                    const room = await connection.joinRoom(this.codeInput);
-                    this.localPlayerId = room.sessionId;
-                    this.roomCode = room.roomId;
-                    htmlInput.remove();
-                    this.showWaiting();
-                } catch (err) {
-                    console.error('Failed to join room:', err);
-                    hint.setText('Room not found. Try again.');
-                    hint.setColor('#ff4444');
-                }
-            }
-        });
-
-        // Add a JOIN button for mobile (no Enter key on some keyboards)
-        const joinY = y;
-        y += 50;
-        const joinBtn = this.createButton(cx, joinY, 'JOIN', 120, 42, async () => {
+        const submitCode = async () => {
             if (this.codeInput.length < 3) return;
             try {
                 const room = await connection.joinRoom(this.codeInput);
@@ -296,8 +271,25 @@ export class MultiplayerLobby extends Scene {
                 hint.setText('Room not found. Try again.');
                 hint.setColor('#ff4444');
             }
+        };
+
+        htmlInput.addEventListener('keydown', async (event: KeyboardEvent) => {
+            if (event.key === 'Enter') submitCode();
         });
+
+        // JOIN button
+        const joinBtn = this.createButton(cx, y, 'JOIN', 180, 42, () => submitCode());
         this.elements.push(joinBtn);
+
+        y += 55;
+
+        // CANCEL button
+        const cancelBtn = this.createButton(cx, y, 'CANCEL', 180, 42, () => {
+            htmlInput.remove();
+            connection.disconnect();
+            this.showMenu();
+        });
+        this.elements.push(cancelBtn);
 
         // Clean up HTML input when leaving this state
         const origClear = this.clearAll.bind(this);

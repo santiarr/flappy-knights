@@ -184,6 +184,8 @@ export class MultiplayerLobby extends Scene {
         const gap = 20;
         const totalWidth = boxSize * 4 + gap * 3;
         const startX = cx - totalWidth * 0.5 + boxSize * 0.5;
+        const boxCenterY = y; // center Y of boxes
+        const boxTop = boxCenterY - boxSize * 0.5; // top edge for drawing
 
         const boxGraphics: Phaser.GameObjects.Graphics[] = [];
         const boxTexts: Phaser.GameObjects.Text[] = [];
@@ -193,13 +195,13 @@ export class MultiplayerLobby extends Scene {
 
             const box = this.add.graphics();
             box.fillStyle(0x1a1a3a);
-            box.fillRoundedRect(bx - boxSize * 0.5, y - boxSize * 0.5, boxSize, boxSize, 6);
+            box.fillRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
             box.lineStyle(2, 0x5555aa);
-            box.strokeRoundedRect(bx - boxSize * 0.5, y - boxSize * 0.5, boxSize, boxSize, 6);
+            box.strokeRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
             this.elements.push(box);
             boxGraphics.push(box);
 
-            const charText = this.add.text(bx, y, '', {
+            const charText = this.add.text(bx, boxCenterY, '', {
                 fontFamily: ARCADE_FONT, fontSize: '36px', color: TITLE_COLOR,
                 fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(10);
@@ -229,7 +231,7 @@ export class MultiplayerLobby extends Scene {
 
                 if (event.key === 'Backspace' && this.codeInput.length > 0) {
                     this.codeInput = this.codeInput.slice(0, -1);
-                    this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, y - 90 - boxSize * 0.5, gap);
+                    this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, boxTop, gap);
                     return;
                 }
 
@@ -237,7 +239,7 @@ export class MultiplayerLobby extends Scene {
                 if (key.length !== 1 || key < 'A' || key > 'Z') return;
 
                 this.codeInput += key;
-                this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, y - 90 - boxSize * 0.5, gap);
+                this.updateBoxes(boxTexts, boxGraphics, boxSize, startX, boxTop, gap);
 
                 // Auto-submit when 4 chars entered
                 if (this.codeInput.length === 4) {
@@ -254,7 +256,7 @@ export class MultiplayerLobby extends Scene {
         graphics: Phaser.GameObjects.Graphics[],
         boxSize: number,
         startX: number,
-        boxY: number,
+        boxTop: number,
         gap: number,
     ): void {
         for (let i = 0; i < 4; i++) {
@@ -265,9 +267,9 @@ export class MultiplayerLobby extends Scene {
             const active = i === this.codeInput.length;
             graphics[i].clear();
             graphics[i].fillStyle(filled ? 0x2a2a5a : 0x1a1a3a);
-            graphics[i].fillRoundedRect(bx - boxSize * 0.5, boxY, boxSize, boxSize, 6);
+            graphics[i].fillRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
             graphics[i].lineStyle(2, active ? 0x7777cc : 0x5555aa);
-            graphics[i].strokeRoundedRect(bx - boxSize * 0.5, boxY, boxSize, boxSize, 6);
+            graphics[i].strokeRoundedRect(bx - boxSize * 0.5, boxTop, boxSize, boxSize, 6);
         }
     }
 

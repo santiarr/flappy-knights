@@ -4,7 +4,6 @@ import { GAME, LAVA, COLORS } from '../core/Constants';
 export class LavaPit {
     private scene: Phaser.Scene;
     private graphics: Phaser.GameObjects.Graphics;
-    private glowGraphics: Phaser.GameObjects.Graphics;
     private zone: Phaser.Physics.Arcade.StaticBody;
     private splashEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
     private nextSplashTime = 0;
@@ -15,10 +14,6 @@ export class LavaPit {
         // Visual
         this.graphics = scene.add.graphics();
         this.graphics.setDepth(6);
-
-        // Glow layer above lava
-        this.glowGraphics = scene.add.graphics();
-        this.glowGraphics.setDepth(5);
 
         // Physics zone for collision — extends above lava surface to catch falling entities
         const zoneHeight = LAVA.HEIGHT + 20;
@@ -39,15 +34,6 @@ export class LavaPit {
 
     private drawLava(time: number): void {
         this.graphics.clear();
-        this.glowGraphics.clear();
-
-        // Emissive glow above lava surface (orange gradient)
-        const glowHeight = 30;
-        for (let i = 0; i < glowHeight; i++) {
-            const alpha = 0.15 * (1 - i / glowHeight);
-            this.glowGraphics.fillStyle(0xff6600, alpha);
-            this.glowGraphics.fillRect(0, LAVA.Y - glowHeight + i, GAME.WIDTH, 1);
-        }
 
         // Lava body
         this.graphics.fillStyle(COLORS.LAVA_DARK);
@@ -122,7 +108,6 @@ export class LavaPit {
 
     destroy(): void {
         this.graphics.destroy();
-        this.glowGraphics.destroy();
         if (this.splashEmitter) {
             this.splashEmitter.destroy();
         }

@@ -5,6 +5,7 @@ import type { ServerMessage, GameSnapshot } from '../multiplayer/types';
 import { Platform } from '../objects/Platform';
 import { LavaPit } from '../objects/LavaPit';
 import { capture } from '../analytics';
+import { audioManager } from '../audio/AudioManager';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const ATLAS_PREFIX: Record<string, string> = {
@@ -104,6 +105,9 @@ export class MultiplayerGame extends Scene {
 
         // Tell server we're ready
         connection.send({ type: 'ready' });
+
+        // Start music
+        audioManager.startBGM();
 
         capture('multiplayer_game_start', { roomCode: this.roomCode });
     }
@@ -515,6 +519,7 @@ export class MultiplayerGame extends Scene {
     }
 
     shutdown(): void {
+        audioManager.stopBGM();
         if (this.messageHandler) {
             connection.offMessage(this.messageHandler);
             this.messageHandler = null;

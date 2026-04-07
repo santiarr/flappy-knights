@@ -587,13 +587,26 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       ps.anim = getPlayerAnim(internal);
     }
 
-    // Sync enemies — rebuild the array from active internal enemies
-    // Clear and repopulate to keep schema in sync
-    this.state.enemies.clear();
+    // Sync enemies — update in place, add new ones, remove dead ones
+    const activeEnemyIds = new Set(this.internalEnemies.filter(e => e.active).map(e => e.id));
+
+    // Remove schema entries for dead enemies (iterate backwards)
+    for (let i = this.state.enemies.length - 1; i >= 0; i--) {
+      if (!activeEnemyIds.has(this.state.enemies[i].id)) {
+        this.state.enemies.splice(i, 1);
+      }
+    }
+
+    // Update existing or add new
     for (const e of this.internalEnemies) {
       if (!e.active) continue;
-      const es = new EnemyState();
-      es.id = e.id;
+      let es: EnemyState | undefined;
+      this.state.enemies.forEach((s: EnemyState) => { if (s.id === e.id) es = s; });
+      if (!es) {
+        es = new EnemyState();
+        es.id = e.id;
+        this.state.enemies.push(es);
+      }
       es.enemyType = e.type;
       es.x = e.x;
       es.y = e.y;
@@ -602,20 +615,30 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       es.flipX = e.flipX;
       es.anim = getEnemyAnim(e);
       es.active = true;
-      this.state.enemies.push(es);
     }
 
-    // Sync eggs
-    this.state.eggs.clear();
+    // Sync eggs — same pattern
+    const activeEggIds = new Set(this.internalEggs.filter(e => e.active).map(e => e.id));
+
+    for (let i = this.state.eggs.length - 1; i >= 0; i--) {
+      if (!activeEggIds.has(this.state.eggs[i].id)) {
+        this.state.eggs.splice(i, 1);
+      }
+    }
+
     for (const egg of this.internalEggs) {
       if (!egg.active) continue;
-      const eggS = new EggState();
-      eggS.id = egg.id;
+      let eggS: EggState | undefined;
+      this.state.eggs.forEach((s: EggState) => { if (s.id === egg.id) eggS = s; });
+      if (!eggS) {
+        eggS = new EggState();
+        eggS.id = egg.id;
+        this.state.eggs.push(eggS);
+      }
       eggS.eggType = egg.type;
       eggS.x = egg.x;
       eggS.y = egg.y;
       eggS.active = true;
-      this.state.eggs.push(eggS);
     }
   }
 

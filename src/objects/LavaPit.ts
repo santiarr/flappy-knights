@@ -41,12 +41,23 @@ export class LavaPit {
         this.graphics.clear();
         this.glowGraphics.clear();
 
-        // Emissive glow above lava surface (orange gradient)
-        const glowHeight = 30;
+        // Enhanced pulsing glow above lava surface
+        const glowHeight = 60;
+        const glowPulse = 0.8 + Math.sin(time * 0.001) * 0.2; // pulse 0.6-1.0
         for (let i = 0; i < glowHeight; i++) {
-            const alpha = 0.15 * (1 - i / glowHeight);
+            const alpha = 0.18 * glowPulse * (1 - i / glowHeight) * (1 - i / glowHeight); // quadratic falloff
             this.glowGraphics.fillStyle(0xff6600, alpha);
             this.glowGraphics.fillRect(0, LAVA.Y - glowHeight + i, GAME.WIDTH, 1);
+        }
+
+        // Ambient lava light on bottom 40% of screen
+        const ambientHeight = GAME.HEIGHT * 0.4;
+        const ambientStartY = GAME.HEIGHT - ambientHeight;
+        for (let i = 0; i < ambientHeight; i += 3) { // step by 3 for performance
+            const progress = i / ambientHeight; // 0 at top, 1 at bottom
+            const alpha = 0.02 * progress * progress * glowPulse;
+            this.glowGraphics.fillStyle(0xff4400, alpha);
+            this.glowGraphics.fillRect(0, ambientStartY + i, GAME.WIDTH, 3);
         }
 
         // Lava body

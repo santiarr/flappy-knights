@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PLATFORM } from '../core/Constants';
+import { PLATFORM, LAVA } from '../core/Constants';
 
 export class Platform extends Phaser.Physics.Arcade.Sprite {
     constructor(scene: Phaser.Scene, x: number, y: number, w: number, h: number) {
@@ -31,6 +31,27 @@ export class Platform extends Phaser.Physics.Arcade.Sprite {
         scene.physics.add.existing(this, true); // static body
 
         this.setDepth(5);
+
+        // Lava reflection glow — stronger for lower platforms
+        const distToLava = LAVA.Y - (y + h);
+        const maxDist = 300; // platforms further than this get no glow
+        if (distToLava < maxDist && distToLava > 0) {
+            const intensity = 1 - (distToLava / maxDist);
+            const glowGfx = scene.add.graphics();
+            glowGfx.setDepth(4); // behind platform
+
+            // Orange glow strip below platform
+            const glowH = 8 + intensity * 12; // 8-20px
+            for (let gi = 0; gi < glowH; gi++) {
+                const alpha = 0.12 * intensity * (1 - gi / glowH);
+                glowGfx.fillStyle(0xff6600, alpha);
+                glowGfx.fillRect(x + 2, y + h + gi, w - 4, 1);
+            }
+
+            // Subtle orange tint on bottom edge of platform itself
+            glowGfx.fillStyle(0xff4400, 0.08 * intensity);
+            glowGfx.fillRect(x + 1, y + h - 2, w - 2, 2);
+        }
     }
 
     static createAll(scene: Phaser.Scene): Phaser.Physics.Arcade.StaticGroup {

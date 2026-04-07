@@ -1,5 +1,5 @@
 import { Scene } from 'phaser';
-import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL, JOYSTICK, IS_TOUCH, PLATFORM } from '../core/Constants';
+import { GAME, PLAYER, WAVE, SPAWN_POINTS, NEAR_MISS_DISTANCE, SAFE_ZONE, COLORS, ENEMY, PTERODACTYL, JOYSTICK, IS_TOUCH, PLATFORM, LAVA } from '../core/Constants';
 import { EventBus, Events } from '../core/EventBus';
 import { GameState } from '../core/GameState';
 import { Player } from '../objects/Player';
@@ -11,6 +11,7 @@ import { Pterodactyl } from '../objects/Pterodactyl';
 import { LavaTroll } from '../objects/LavaTroll';
 import { SpectacleManager } from '../systems/SpectacleManager';
 import { audioManager } from '../audio/AudioManager';
+import { capture } from '../analytics';
 
 export class Game extends Scene {
     private player!: Player;
@@ -48,6 +49,11 @@ export class Game extends Scene {
     // Touch state
     private touchFlap = false;
 
+    // Parallax cave background layers
+    private bgLayer1!: Phaser.GameObjects.Graphics;
+    private bgLayer2!: Phaser.GameObjects.Graphics;
+    private bgLayer3!: Phaser.GameObjects.Graphics;
+
     // Floating joystick state — spawns where you first touch
     private joystickGraphics!: Phaser.GameObjects.Graphics;
     private joystickKnob!: Phaser.GameObjects.Graphics;
@@ -56,6 +62,11 @@ export class Game extends Scene {
     private joystickValue = 0; // -1 to 1
     private joystickOriginX = 0; // where the thumb first touched
     private joystickOriginY = 0;
+
+    // Ambient background elements
+    private emberEmitter?: Phaser.GameObjects.Particles.ParticleEmitter;
+    private batTimer?: Phaser.Time.TimerEvent;
+    private torchGlows: { gfx: Phaser.GameObjects.Graphics; offset: number }[] = [];
 
     constructor() {
         super('Game');
@@ -154,6 +165,49 @@ export class Game extends Scene {
             rock.setAlpha(0.15 + Math.random() * 0.15);
             rock.setScale(0.6 + Math.random() * 0.8);
         }
+
+        // --- Parallax Layer 1: Deep cave wall (depth -12, slowest) ---
+        this.bgLayer1 = this.add.graphics();
+        this.bgLayer1.setDepth(-12);
+        for (let i = 0; i < 18; i++) {
+            const bx = Phaser.Math.Between(-40, GAME.WIDTH + 40);
+            const by = Phaser.Math.Between(-40, GAME.HEIGHT + 40);
+            const radius = Phaser.Math.Between(30, 80);
+            const alpha = 0.3 + Math.random() * 0.2;
+            this.bgLayer1.fillStyle(0x0d0520, alpha);
+            this.bgLayer1.fillCircle(bx, by, radius);
+        }
+
+        // --- Parallax Layer 2: Mid stalactites/stalagmites (depth -8, medium) ---
+        this.bgLayer2 = this.add.graphics();
+        this.bgLayer2.setDepth(-8);
+        // Stalactites hanging from top
+        for (let i = 0; i < 7; i++) {
+            const sx = Phaser.Math.Between(40, GAME.WIDTH - 40);
+            const w = Phaser.Math.Between(15, 40);
+            const h = Phaser.Math.Between(40, 120);
+            this.bgLayer2.fillStyle(0x2a1a4e, 1);
+            this.bgLayer2.fillTriangle(sx - w * 0.5, 0, sx + w * 0.5, 0, sx, h);
+        }
+        // Stalagmites growing from bottom (above lava at y=480)
+        for (let i = 0; i < 4; i++) {
+            const sx = Phaser.Math.Between(60, GAME.WIDTH - 60);
+            const w = Phaser.Math.Between(15, 35);
+            const h = Phaser.Math.Between(30, 80);
+            this.bgLayer2.fillStyle(0x2a1a4e, 1);
+            this.bgLayer2.fillTriangle(sx - w * 0.5, 480, sx + w * 0.5, 480, sx, 480 - h);
+        }
+
+        // --- Parallax Layer 3: Foreground rock edges (depth 50, fastest) ---
+        this.bgLayer3 = this.add.graphics();
+        this.bgLayer3.setDepth(50);
+        this.bgLayer3.fillStyle(0x0a0515, 0.6);
+        // Left side rocks
+        this.bgLayer3.fillTriangle(-10, 80, 35, 60, 10, 160);
+        this.bgLayer3.fillRect(-5, 300, 25, 70);
+        // Right side rocks
+        this.bgLayer3.fillTriangle(GAME.WIDTH + 10, 120, GAME.WIDTH - 30, 100, GAME.WIDTH - 5, 200);
+        this.bgLayer3.fillRect(GAME.WIDTH - 20, 380, 25, 60);
     }
 
     private createEnemyPool(count: number): void {
@@ -445,6 +499,7 @@ export class Game extends Scene {
             if (GameState.score >= WAVE.BONUS_LIFE_SCORES[i]) {
                 GameState.lives++;
                 GameState.bonusLivesAwarded = i + 1;
+                capture('bonus life earned', { score: GameState.score, wave: GameState.wave, lives: GameState.lives });
                 this.updateHUD();
                 // Flash the lives counter
                 this.tweens.add({
@@ -749,6 +804,13 @@ export class Game extends Scene {
         this.handleInput(delta);
         this.player.update(time, delta);
 
+        // Parallax background shift based on player position
+        const offsetX = (this.player.x - GAME.WIDTH * 0.5) / GAME.WIDTH;
+        const offsetY = (this.player.y - GAME.HEIGHT * 0.5) / GAME.HEIGHT;
+        this.bgLayer1.setPosition(-offsetX * 5, -offsetY * 3);
+        this.bgLayer2.setPosition(-offsetX * 15, -offsetY * 10);
+        this.bgLayer3.setPosition(-offsetX * 30, -offsetY * 20);
+
         // Update enemies with wave-scaled speed
         const waveSpeedScale = Math.min(
             1 + (GameState.wave - 1) * ENEMY.WAVE_SPEED_SCALE,
@@ -993,6 +1055,9 @@ export class Game extends Scene {
         if (this.spectacle) this.spectacle.shutdown();
         if (this.pterodactyl) this.pterodactyl.deactivate();
         if (this.lavaTroll) this.lavaTroll.setActive(false);
+        if (this.bgLayer1) this.bgLayer1.destroy();
+        if (this.bgLayer2) this.bgLayer2.destroy();
+        if (this.bgLayer3) this.bgLayer3.destroy();
         if (this.joystickGraphics) this.joystickGraphics.destroy();
         if (this.joystickKnob) this.joystickKnob.destroy();
         if (this.pauseOverlay) this.pauseOverlay.destroy();

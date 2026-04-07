@@ -561,29 +561,29 @@ export class Game extends Scene {
 
         this.hudScore = this.add.text(10, hudY, '0', {
             fontFamily: arcadeFont,
-            fontSize: '18px',
+            fontSize: '28px',
             color: '#ffd700',
             fontStyle: 'bold',
             stroke: '#000000',
-            strokeThickness: 3,
+            strokeThickness: 4,
         }).setDepth(100);
 
         this.hudLives = this.add.text(GAME.WIDTH * 0.5, hudY, `♥ ${GameState.lives}`, {
             fontFamily: arcadeFont,
-            fontSize: '18px',
+            fontSize: '28px',
             color: '#ff4444',
             fontStyle: 'bold',
             stroke: '#000000',
-            strokeThickness: 3,
+            strokeThickness: 4,
         }).setOrigin(0.5, 0).setDepth(100);
 
-        this.hudWave = this.add.text(GAME.WIDTH - 50, hudY, `W${GameState.wave}`, {
+        this.hudWave = this.add.text(GAME.WIDTH - 10, hudY, `W${GameState.wave}`, {
             fontFamily: arcadeFont,
-            fontSize: '18px',
+            fontSize: '28px',
             color: '#aaaacc',
             fontStyle: 'bold',
             stroke: '#000000',
-            strokeThickness: 3,
+            strokeThickness: 4,
         }).setOrigin(1, 0).setDepth(100);
     }
 

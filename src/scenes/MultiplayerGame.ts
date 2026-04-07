@@ -141,30 +141,30 @@ export class MultiplayerGame extends Scene {
 
         // Left: local player score (gold)
         this.hudLocalScore = this.add.text(10, hudY, '0', {
-            fontFamily: ARCADE_FONT, fontSize: '18px', color: '#ffd700',
-            fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: '#ffd700',
+            fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
         }).setDepth(100);
 
-        this.hudLocalLives = this.add.text(10, hudY + 22, '\u2665\u2665\u2665', {
-            fontFamily: ARCADE_FONT, fontSize: '14px', color: '#ff4444',
-            stroke: '#000000', strokeThickness: 2,
+        this.hudLocalLives = this.add.text(10, hudY + 32, '\u2665\u2665\u2665', {
+            fontFamily: ARCADE_FONT, fontSize: '22px', color: '#ff4444',
+            stroke: '#000000', strokeThickness: 3,
         }).setDepth(100);
 
         // Center: wave
         this.hudWave = this.add.text(GAME.WIDTH * 0.5, hudY, 'W1', {
-            fontFamily: ARCADE_FONT, fontSize: '18px', color: '#aaaacc',
-            fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: '#aaaacc',
+            fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
         }).setOrigin(0.5, 0).setDepth(100);
 
         // Right: opponent score (red)
         this.hudOpponentScore = this.add.text(GAME.WIDTH - 10, hudY, '0', {
-            fontFamily: ARCADE_FONT, fontSize: '18px', color: '#ff6666',
-            fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: '#ff6666',
+            fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
         }).setOrigin(1, 0).setDepth(100);
 
-        this.hudOpponentLives = this.add.text(GAME.WIDTH - 10, hudY + 22, '\u2665\u2665\u2665', {
-            fontFamily: ARCADE_FONT, fontSize: '14px', color: '#ff4444',
-            stroke: '#000000', strokeThickness: 2,
+        this.hudOpponentLives = this.add.text(GAME.WIDTH - 10, hudY + 32, '\u2665\u2665\u2665', {
+            fontFamily: ARCADE_FONT, fontSize: '22px', color: '#ff4444',
+            stroke: '#000000', strokeThickness: 3,
         }).setOrigin(1, 0).setDepth(100);
     }
 

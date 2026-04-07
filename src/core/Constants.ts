@@ -91,11 +91,11 @@ export const PLATFORM = {
 };
 
 export const LAVA = {
-    HEIGHT: 60,
+    HEIGHT: 40,
     COLOR: 0xff4400,
     WAVE_AMPLITUDE: 4,
     WAVE_SPEED: 0.003,
-    Y: GAME.HEIGHT - 60,
+    Y: GAME.HEIGHT - 40,
 };
 
 export const WAVE = {

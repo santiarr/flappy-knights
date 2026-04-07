@@ -5,9 +5,11 @@ import { Preloader } from './scenes/Preloader';
 import { TitleScreen } from './scenes/TitleScreen';
 import { Game as MainGame } from './scenes/Game';
 import { GameOver } from './scenes/GameOver';
+import { MultiplayerLobby } from './scenes/MultiplayerLobby';
 import { audioManager } from './audio/AudioManager';
 import { initAudioBridge } from './audio/AudioBridge';
-import { initPlayFun } from './playfun';
+import { initAnalytics } from './analytics';
+
 
 const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
@@ -23,7 +25,7 @@ const config: Phaser.Types.Core.GameConfig = {
             debug: false,
         },
     },
-    scene: [Boot, Preloader, TitleScreen, MainGame, GameOver],
+    scene: [Boot, Preloader, TitleScreen, MainGame, GameOver, MultiplayerLobby],
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -31,9 +33,9 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    initAnalytics();
     new Game({ ...config, parent: 'game-container' });
     initAudioBridge();
-    initPlayFun().catch(err => console.warn('Play.fun init failed:', err));
 
     // Initialize AudioContext on first user interaction
     const initAudio = () => {

@@ -1,5 +1,6 @@
 import Phaser, { Scene } from 'phaser';
 import { GAME, SAFE_ZONE, IS_TOUCH } from '../core/Constants';
+import { capture } from '../analytics';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const TITLE_COLOR = '#ffd700';
@@ -81,7 +82,15 @@ export class TitleScreen extends Scene {
         const playBtn = this.createButton(cx, y, 'PLAY', 220, 50, () => this.startGame());
         this.mainElements.push(playBtn);
 
-        y += 70;
+        y += 55;
+
+        // MULTIPLAYER button
+        const mpBtn = this.createButton(cx, y, 'MULTIPLAYER', 220, 42, () => {
+            this.scene.start('MultiplayerLobby');
+        });
+        this.mainElements.push(mpBtn);
+
+        y += 55;
 
         // HOW TO PLAY button
         const tutBtn = this.createButton(cx, y, 'HOW TO PLAY', 220, 42, () => this.showTutorial());
@@ -132,6 +141,7 @@ export class TitleScreen extends Scene {
     private showTutorial(): void {
         this.clearMain();
         this.showingTutorial = true;
+        capture('tutorial viewed', { is_first_play: isFirstPlay() });
 
         const cx = GAME.WIDTH * 0.5;
         const leftCol = GAME.WIDTH * 0.28;
@@ -332,6 +342,7 @@ export class TitleScreen extends Scene {
 
     private startGame(): void {
         markTutorialDone();
+        capture('game play started', { input_type: IS_TOUCH ? 'touch' : 'keyboard' });
         this.cameras.main.fadeOut(300, 0, 0, 0);
         this.time.delayedCall(300, () => {
             this.scene.start('Game');

@@ -6,6 +6,7 @@ import { TitleScreen } from './scenes/TitleScreen';
 import { Game as MainGame } from './scenes/Game';
 import { GameOver } from './scenes/GameOver';
 import { MultiplayerLobby } from './scenes/MultiplayerLobby';
+import { MultiplayerGame } from './scenes/MultiplayerGame';
 import { MultiplayerResults } from './scenes/MultiplayerResults';
 import { audioManager } from './audio/AudioManager';
 import { initAudioBridge } from './audio/AudioBridge';
@@ -26,7 +27,7 @@ const config: Phaser.Types.Core.GameConfig = {
             debug: false,
         },
     },
-    scene: [Boot, Preloader, TitleScreen, MainGame, GameOver, MultiplayerLobby, MultiplayerResults],
+    scene: [Boot, Preloader, TitleScreen, MainGame, GameOver, MultiplayerLobby, MultiplayerGame, MultiplayerResults],
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,

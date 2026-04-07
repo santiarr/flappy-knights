@@ -71,15 +71,7 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.createRoom();
                 this.localPlayerId = room.sessionId;
-                // Wait for first state sync to get the short code
-                await new Promise<void>((resolve) => {
-                    const check = () => {
-                        const code = connection.getState()?.code;
-                        if (code) { this.roomCode = code; resolve(); }
-                    };
-                    check();
-                    if (!this.roomCode) room.onStateChange.once(check);
-                });
+                this.roomCode = connection.getCode();
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to create room:', err);
@@ -101,14 +93,7 @@ export class MultiplayerLobby extends Scene {
             try {
                 const room = await connection.quickMatch();
                 this.localPlayerId = room.sessionId;
-                await new Promise<void>((resolve) => {
-                    const check = () => {
-                        const code = connection.getState()?.code;
-                        if (code) { this.roomCode = code; resolve(); }
-                    };
-                    check();
-                    if (!this.roomCode) room.onStateChange.once(check);
-                });
+                this.roomCode = connection.getCode();
                 this.showWaiting();
             } catch (err) {
                 console.error('Failed to quick match:', err);

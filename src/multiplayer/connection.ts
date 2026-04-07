@@ -1,5 +1,6 @@
 import { Client, Room } from "@colyseus/sdk";
 import type { ClientGameState } from "./types";
+import { generateRoomCode } from "./types";
 
 const COLYSEUS_URL = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
 
@@ -9,6 +10,7 @@ class ConnectionManager {
     private client: Client;
     private room: Room | null = null;
     private eventHandlers: EventHandler[] = [];
+    private code = "";
 
     constructor() {
         this.client = new Client(COLYSEUS_URL);
@@ -16,18 +18,17 @@ class ConnectionManager {
 
     async createRoom(): Promise<Room> {
         this.disconnect();
-        this.room = await this.client.create("game");
+        this.code = generateRoomCode();
+        this.room = await this.client.create("game", { code: this.code });
         this.setupRoomListeners();
         return this.room;
     }
 
     async joinRoom(code: string): Promise<Room> {
         this.disconnect();
-        // Find available rooms and match by code
-        const rooms = await this.client.getAvailableRooms("game");
-        const match = rooms.find(r => r.metadata?.code === code.toUpperCase());
-        if (!match) throw new Error("Room not found");
-        this.room = await this.client.joinById(match.roomId);
+        this.code = code.toUpperCase();
+        // The room's roomId IS the code
+        this.room = await this.client.joinById(this.code);
         this.setupRoomListeners();
         return this.room;
     }
@@ -35,12 +36,17 @@ class ConnectionManager {
     async quickMatch(): Promise<Room> {
         this.disconnect();
         this.room = await this.client.joinOrCreate("game");
+        this.code = this.room.roomId;
         this.setupRoomListeners();
         return this.room;
     }
 
     getRoom(): Room | null {
         return this.room;
+    }
+
+    getCode(): string {
+        return this.code;
     }
 
     getState(): ClientGameState | null {
@@ -68,36 +74,31 @@ class ConnectionManager {
     private setupRoomListeners(): void {
         if (!this.room) return;
 
-        // Listen for broadcast events from server (joust_win, enemy_killed, etc.)
-        this.room.onMessage("event", (data: { name: string; data?: any }) => {
+        this.room.onMessage("event", (data: { name: string; data?: Record<string, unknown> }) => {
             for (const handler of this.eventHandlers) {
-                handler(data.name, data.data);
+                handler(data.name, data.data ?? {});
             }
         });
 
-        // Listen for match_over
-        this.room.onMessage("match_over", (data: any) => {
+        this.room.onMessage("match_over", (data: Record<string, unknown>) => {
             for (const handler of this.eventHandlers) {
                 handler("match_over", data);
             }
         });
 
-        // Listen for countdown
-        this.room.onMessage("countdown", (data: any) => {
+        this.room.onMessage("countdown", (data: Record<string, unknown>) => {
             for (const handler of this.eventHandlers) {
                 handler("countdown", data);
             }
         });
 
-        // Listen for rematch
-        this.room.onMessage("rematch", (data: any) => {
+        this.room.onMessage("rematch", (data: Record<string, unknown>) => {
             for (const handler of this.eventHandlers) {
                 handler("rematch", data);
             }
         });
 
-        // Listen for player_left
-        this.room.onMessage("player_left", (data: any) => {
+        this.room.onMessage("player_left", (data: Record<string, unknown>) => {
             for (const handler of this.eventHandlers) {
                 handler("player_left", data);
             }
@@ -109,6 +110,7 @@ class ConnectionManager {
             this.room.leave();
             this.room = null;
         }
+        this.code = "";
         this.eventHandlers = [];
     }
 

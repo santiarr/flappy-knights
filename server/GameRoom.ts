@@ -265,18 +265,42 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-  onCreate(options: any) {
+  // Presence channel for tracking active room IDs
+  private LOBBY_CHANNEL = "$flappy_rooms";
+
+  private generateCodeSingle(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let result = "";
+    for (let i = 0; i < 4; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
+  }
+
+  private async generateUniqueCode(): Promise<string> {
+    const currentIds = await this.presence.smembers(this.LOBBY_CHANNEL);
+    let id: string;
+    do {
+      id = this.generateCodeSingle();
+    } while (currentIds.includes(id));
+    await this.presence.sadd(this.LOBBY_CHANNEL, id);
+    return id;
+  }
+
+  async onCreate(options: { code?: string } = {}) {
     this.state = new GameRoomState();
 
-    // Generate short uppercase room code
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    let code = "";
-    for (let i = 0; i < 4; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    this.setMetadata({ code });
+    // Set custom 4-letter room ID (official Colyseus pattern)
+    const code = options.code || await this.generateUniqueCode();
+    this.roomId = code;
     this.state.code = code;
     console.log("GameRoom created with code:", code);
+  }
+
+  async onDispose() {
+    // Free up the room code
+    this.presence.srem(this.LOBBY_CHANNEL, this.roomId);
+    console.log("GameRoom disposed, freed code:", this.roomId);
   }
 
   onJoin(client: Client) {

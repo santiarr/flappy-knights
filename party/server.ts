@@ -203,17 +203,23 @@ function generateWaveEnemies(wave: number): EnemyType[] {
 }
 
 function getPlayerAnim(p: ServerPlayer): string {
-  if (p.isRespawning) return "idle";
-  if (!p.onGround) return p.vy < 0 ? "flap" : "fall";
-  if (Math.abs(p.vx) > 10) return "run";
-  return "idle";
+  if (p.isRespawning) return "player_idle_anim";
+  if (!p.onGround) return "player_charge_anim";
+  if (Math.abs(p.vx) > 10) return "player_run_anim";
+  return "player_idle_anim";
 }
 
+const ENEMY_ATLAS: Record<string, string> = {
+  BOUNDER: "bounder",
+  HUNTER: "hunter",
+  SHADOW_LORD: "shadow",
+};
+
 function getEnemyAnim(e: ServerEnemy): string {
-  if (!e.active) return "idle";
-  if (e.vy < -30) return "flap";
-  if (e.vy > 30) return "fall";
-  return "idle";
+  const prefix = ENEMY_ATLAS[e.type] || "bounder";
+  if (!e.active) return `${prefix}_idle_anim`;
+  if (e.vy < -30) return `${prefix}_run_anim`;
+  return `${prefix}_idle_anim`;
 }
 
 function randomFlapTime(): number {

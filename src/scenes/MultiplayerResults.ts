@@ -1,25 +1,17 @@
 import Phaser, { Scene } from 'phaser';
 import { GAME, SAFE_ZONE } from '../core/Constants';
-import { connection } from '../multiplayer/connection';
 import type { PlayerResult } from '../multiplayer/types';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 
 export class MultiplayerResults extends Scene {
     private particleRain?: Phaser.GameObjects.Particles.ParticleEmitter;
-    private eventHandler?: (type: string, data: Record<string, unknown>) => void;
-    private rematchPending = false;
-    private opponentRematchPending = false;
-    private rematchStatusText?: Phaser.GameObjects.Text;
 
     constructor() {
         super('MultiplayerResults');
     }
 
     create(data: { winner: string; players: PlayerResult[]; localPlayerId: string }): void {
-        this.rematchPending = false;
-        this.opponentRematchPending = false;
-
         this.cameras.main.setBackgroundColor(0x0a0515);
         this.cameras.main.fadeIn(500, 10, 5, 21);
 
@@ -95,37 +87,15 @@ export class MultiplayerResults extends Scene {
 
         y += 190;
 
-        // REMATCH button
+        // REMATCH button — restart the multiplayer game
         this.createButton(cx - 110, y, 180, 44, 'REMATCH', '#ffd700', () => {
             this.handleRematch();
         });
-
-        // Rematch status text (hidden initially)
-        this.rematchStatusText = this.add.text(cx, y + 50, '', {
-            fontFamily: ARCADE_FONT,
-            fontSize: '11px',
-            color: '#888888',
-        }).setOrigin(0.5).setDepth(10);
 
         // MAIN MENU button
         this.createButton(cx + 110, y, 180, 44, 'MAIN MENU', '#cccccc', () => {
             this.handleMainMenu();
         });
-
-        // Listen for rematch messages from opponent
-        this.eventHandler = (type: string, _eventData: any) => {
-            if (type === 'rematch') {
-                this.opponentRematchPending = true;
-                if (this.rematchPending) {
-                    // Both players want rematch — server will start a new match
-                    // The server should send a countdown or state message
-                } else if (this.rematchStatusText) {
-                    this.rematchStatusText.setText('Opponent wants a rematch!');
-                    this.rematchStatusText.setColor('#44ff44');
-                }
-            }
-        };
-        connection.onEvent(this.eventHandler);
     }
 
     private buildPlayerColumn(x: number, startY: number, label: string, labelColor: string, player: PlayerResult): void {
@@ -252,32 +222,16 @@ export class MultiplayerResults extends Scene {
     }
 
     private handleRematch(): void {
-        if (this.rematchPending) return;
-        this.rematchPending = true;
-        connection.send("rematch");
-
-        if (this.rematchStatusText) {
-            if (this.opponentRematchPending) {
-                this.rematchStatusText.setText('Starting rematch...');
-                this.rematchStatusText.setColor('#44ff44');
-            } else {
-                this.rematchStatusText.setText('Waiting for opponent...');
-                this.rematchStatusText.setColor('#888888');
-            }
-        }
+        this.shutdown();
+        this.scene.start('MultiplayerGame');
     }
 
     private handleMainMenu(): void {
         this.shutdown();
-        connection.disconnect();
         this.scene.start('TitleScreen');
     }
 
     shutdown(): void {
-        if (this.eventHandler) {
-            connection.offEvent(this.eventHandler);
-            this.eventHandler = undefined;
-        }
         if (this.particleRain) {
             this.particleRain.destroy();
             this.particleRain = undefined;

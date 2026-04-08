@@ -167,9 +167,11 @@ export class MultiplayerLobby extends Scene {
         });
         this.elements.push(cancelBtn);
 
-        // Listen for players
+        // Listen for players — count self as already in
+        this.playerCount = 1;
         onJoin((player) => {
-            console.log('[LOBBY] Player joined:', player.id, player.isMe ? '(me)' : '');
+            if (player.isMe) return; // already counted
+            console.log('[LOBBY] Player joined:', player.id);
             this.playerCount++;
             if (this.playerCount >= 2 && !this.transitioned) {
                 this.transitioned = true;

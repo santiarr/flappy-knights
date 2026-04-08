@@ -396,7 +396,7 @@ export class MultiplayerGame extends Scene {
 
                 // Animation
                 const anim = player.anim;
-                if (anim && sprite.anims.currentAnim?.key !== anim) {
+                if (anim && this.anims.exists(anim) && sprite.anims?.currentAnim?.key !== anim) {
                     sprite.play(anim, true);
                 }
             });
@@ -448,7 +448,7 @@ export class MultiplayerGame extends Scene {
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 
-            if (e.anim && sprite.anims?.currentAnim?.key !== e.anim) {
+            if (e.anim && sprite.anims && this.anims.exists(e.anim) && sprite.anims.currentAnim?.key !== e.anim) {
                 sprite.play(e.anim, true);
             }
         });

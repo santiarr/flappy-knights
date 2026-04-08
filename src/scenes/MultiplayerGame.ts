@@ -387,7 +387,7 @@ export class MultiplayerGame extends Scene {
             console.log(`[GAME] frame=${this.frameCount} phase=${state.phase} wave=${state.wave} enemies=${activeEnemies} players=${state.players?.size ?? 0}`);
         }
 
-        // Render players
+        // Cache server positions then lerp sprites toward them
         if (state.players) {
             state.players.forEach((player: ClientPlayerState, sessionId: string) => {
                 const sprite = sessionId === this.localPlayerId ? this.localSprite : this.opponentSprite;
@@ -398,18 +398,17 @@ export class MultiplayerGame extends Scene {
                 }
                 sprite.setVisible(true);
 
-                sprite.x = player.x;
-                sprite.y = player.y;
+                // Lerp toward server position for smooth movement
+                sprite.x = Phaser.Math.Linear(sprite.x, player.x, 0.3);
+                sprite.y = Phaser.Math.Linear(sprite.y, player.y, 0.3);
                 sprite.setFlipX(player.flipX);
 
-                // Invulnerability flash
                 if (player.isInvulnerable) {
                     sprite.setAlpha(Math.sin(Date.now() * 0.01) > 0 ? 1 : 0.3);
                 } else {
                     sprite.setAlpha(1);
                 }
 
-                // Animation
                 const anim = player.anim;
                 if (anim && this.anims.exists(anim) && sprite.anims?.currentAnim?.key !== anim) {
                     sprite.play(anim, true);
@@ -473,8 +472,9 @@ export class MultiplayerGame extends Scene {
                 this.enemySlotTypes[slot] = e.enemyType;
             }
 
-            sprite.x = e.x;
-            sprite.y = e.y;
+            // Lerp enemies too
+            sprite.x = Phaser.Math.Linear(sprite.x, e.x, 0.3);
+            sprite.y = Phaser.Math.Linear(sprite.y, e.y, 0.3);
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 

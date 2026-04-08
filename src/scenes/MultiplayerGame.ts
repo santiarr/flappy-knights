@@ -416,6 +416,8 @@ export class MultiplayerGame extends Scene {
         this.updateHUD();
     }
 
+    private enemySpriteTypes: Map<number, string> = new Map();
+
     private syncEnemySprites(enemies: { forEach: (cb: (e: ClientEnemyState) => void) => void }): void {
         const activeIds = new Set<number>();
 
@@ -424,14 +426,21 @@ export class MultiplayerGame extends Scene {
             const id = e.id;
             activeIds.add(id);
 
+            const prefix = ATLAS_PREFIX[e.enemyType] || 'bounder';
             let sprite = this.enemySprites.get(id);
+
+            // Recreate sprite if enemy type changed (pool slot reused)
+            if (sprite && this.enemySpriteTypes.get(id) !== e.enemyType) {
+                sprite.destroy();
+                sprite = undefined;
+            }
+
             if (!sprite) {
-                // Create new enemy sprite
-                const prefix = ATLAS_PREFIX[e.enemyType] || 'bounder';
                 const frames = this.textures.get(`${prefix}_idle`).getFrameNames().sort();
                 sprite = this.add.sprite(e.x, e.y, `${prefix}_idle`, frames[0]);
                 sprite.setScale(1.4).setDepth(9);
                 this.enemySprites.set(id, sprite);
+                this.enemySpriteTypes.set(id, e.enemyType);
             }
 
             sprite.x = e.x;
@@ -439,7 +448,7 @@ export class MultiplayerGame extends Scene {
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 
-            if (e.anim && sprite.anims.currentAnim?.key !== e.anim) {
+            if (e.anim && sprite.anims?.currentAnim?.key !== e.anim) {
                 sprite.play(e.anim, true);
             }
         });
@@ -508,6 +517,7 @@ export class MultiplayerGame extends Scene {
         if (this.joystickKnob) this.joystickKnob.destroy();
         this.enemySprites.forEach(s => s.destroy());
         this.enemySprites.clear();
+        this.enemySpriteTypes.clear();
         this.eggSprites.forEach(s => s.destroy());
         this.eggSprites.clear();
     }

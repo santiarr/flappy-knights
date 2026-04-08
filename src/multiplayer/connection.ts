@@ -103,6 +103,16 @@ class ConnectionManager {
                 handler("player_left", data);
             }
         });
+
+        // Register handlers for server messages we don't need to forward
+        // but must register to avoid Colyseus SDK warnings
+        this.room.onMessage("connected", () => {});
+        this.room.onMessage("player_joined", (data: Record<string, unknown>) => {
+            for (const handler of this.eventHandlers) {
+                handler("player_joined", data);
+            }
+        });
+        this.room.onMessage("player_damaged", () => {});
     }
 
     disconnect(): void {

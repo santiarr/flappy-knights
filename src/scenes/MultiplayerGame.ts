@@ -33,6 +33,10 @@ export class MultiplayerGame extends Scene {
     private waveText?: Phaser.GameObjects.Text;
     private countdownText?: Phaser.GameObjects.Text;
 
+    // Client-side prediction for local player
+    private localVx = 0;
+    private localVy = 0;
+
     // Input
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -309,13 +313,60 @@ export class MultiplayerGame extends Scene {
             this.touchFlap = false;
         }
 
-        // Send input to server (only send changes to reduce traffic)
+        // Send input to server
         if (doFlap) {
             connection.send("input", { action: "flap" });
+            // Apply flap locally immediately
+            this.localVy = Math.max(this.localVy + (-300), -400);
         }
         if (moveDir !== this.lastSentInput) {
             connection.send("input", { action: moveDir });
             this.lastSentInput = moveDir;
+        }
+
+        // Client-side prediction: run local physics for our player
+        const dt = 1 / 60;
+        const GRAVITY = 600;
+        const ACCEL = 600;
+        const DRAG = 200;
+        const SPEED = 200;
+
+        // Horizontal
+        if (moveDir === 'left') {
+            this.localVx -= ACCEL * dt;
+            this.localSprite.setFlipX(true);
+        } else if (moveDir === 'right') {
+            this.localVx += ACCEL * dt;
+            this.localSprite.setFlipX(false);
+        } else {
+            // Apply drag
+            if (this.localVx > 0) this.localVx = Math.max(0, this.localVx - DRAG * dt);
+            else if (this.localVx < 0) this.localVx = Math.min(0, this.localVx + DRAG * dt);
+        }
+        this.localVx = Phaser.Math.Clamp(this.localVx, -SPEED, SPEED);
+
+        // Vertical (gravity)
+        this.localVy += GRAVITY * dt;
+        this.localVy = Phaser.Math.Clamp(this.localVy, -400, 400);
+
+        // Move
+        this.localSprite.x += this.localVx * dt;
+        this.localSprite.y += this.localVy * dt;
+
+        // Screen wrap
+        if (this.localSprite.x < -32) this.localSprite.x = GAME.WIDTH + 32;
+        else if (this.localSprite.x > GAME.WIDTH + 32) this.localSprite.x = -32;
+
+        // Ceiling
+        if (this.localSprite.y < 0) {
+            this.localSprite.y = 0;
+            this.localVy = 50;
+        }
+
+        // Floor clamp (lava area)
+        if (this.localSprite.y > GAME.HEIGHT - 40) {
+            this.localSprite.y = GAME.HEIGHT - 40;
+            this.localVy = 0;
         }
     }
 
@@ -387,10 +438,10 @@ export class MultiplayerGame extends Scene {
             console.log(`[GAME] frame=${this.frameCount} phase=${state.phase} wave=${state.wave} enemies=${activeEnemies} players=${state.players?.size ?? 0}`);
         }
 
-        // Cache server positions then lerp sprites toward them
         if (state.players) {
             state.players.forEach((player: ClientPlayerState, sessionId: string) => {
-                const sprite = sessionId === this.localPlayerId ? this.localSprite : this.opponentSprite;
+                const isLocal = sessionId === this.localPlayerId;
+                const sprite = isLocal ? this.localSprite : this.opponentSprite;
 
                 if (player.isRespawning) {
                     sprite.setVisible(false);
@@ -398,10 +449,26 @@ export class MultiplayerGame extends Scene {
                 }
                 sprite.setVisible(true);
 
-                // Lerp toward server position for smooth movement
-                sprite.x = Phaser.Math.Linear(sprite.x, player.x, 0.3);
-                sprite.y = Phaser.Math.Linear(sprite.y, player.y, 0.3);
-                sprite.setFlipX(player.flipX);
+                if (isLocal) {
+                    // Local player: gently correct toward server (client-side prediction handles movement)
+                    const dx = player.x - sprite.x;
+                    const dy = player.y - sprite.y;
+                    // Only correct if drift is significant (>5px)
+                    if (Math.abs(dx) > 5) sprite.x += dx * 0.1;
+                    if (Math.abs(dy) > 5) sprite.y += dy * 0.1;
+                    // Snap velocity to server on big drift
+                    if (Math.abs(dx) > 50 || Math.abs(dy) > 50) {
+                        sprite.x = player.x;
+                        sprite.y = player.y;
+                        this.localVx = player.vx;
+                        this.localVy = player.vy;
+                    }
+                } else {
+                    // Opponent: lerp toward server position
+                    sprite.x = Phaser.Math.Linear(sprite.x, player.x, 0.3);
+                    sprite.y = Phaser.Math.Linear(sprite.y, player.y, 0.3);
+                    sprite.setFlipX(player.flipX);
+                }
 
                 if (player.isInvulnerable) {
                     sprite.setAlpha(Math.sin(Date.now() * 0.01) > 0 ? 1 : 0.3);

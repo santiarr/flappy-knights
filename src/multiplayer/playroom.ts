@@ -1,4 +1,4 @@
-import { insertCoin, onPlayerJoin, isHost, myPlayer } from "playroomkit";
+import { insertCoin, onPlayerJoin, isHost, myPlayer, getRoomCode } from "playroomkit";
 
 export interface PlayroomPlayer {
   id: string;
@@ -11,13 +11,35 @@ export interface PlayroomPlayer {
 
 let initialized = false;
 
-export async function initPlayroom(): Promise<void> {
-  if (initialized) return;
+export async function createRoom(): Promise<string> {
+  initialized = false;
   await insertCoin({
+    skipLobby: true,
+    maxPlayersPerRoom: 2,
+  });
+  initialized = true;
+  return getRoomCode();
+}
+
+export async function joinRoom(code: string): Promise<void> {
+  initialized = false;
+  await insertCoin({
+    skipLobby: true,
+    maxPlayersPerRoom: 2,
+    roomCode: code,
+  });
+  initialized = true;
+}
+
+export async function quickMatch(): Promise<string> {
+  initialized = false;
+  await insertCoin({
+    skipLobby: true,
     maxPlayersPerRoom: 2,
     matchmaking: true,
   });
   initialized = true;
+  return getRoomCode();
 }
 
 export function onJoin(callback: (player: PlayroomPlayer) => void): void {
@@ -44,6 +66,10 @@ export function getMyId(): string {
 
 export function setMyInput(action: string): void {
   myPlayer()?.setState("input", { action });
+}
+
+export function getRoomId(): string {
+  return getRoomCode();
 }
 
 export { isHost, myPlayer };

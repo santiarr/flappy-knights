@@ -1,13 +1,18 @@
 import { Scene } from 'phaser';
 import { GAME, SAFE_ZONE } from '../core/Constants';
-import { initPlayroom, onJoin, getIsHost, getMyId } from '../multiplayer/playroom';
+import { createRoom, joinRoom, quickMatch, onJoin, getIsHost, getMyId } from '../multiplayer/playroom';
 
 const ARCADE_FONT = '"Courier New", Courier, monospace';
 const TITLE_COLOR = '#ffd700';
+const SUB_COLOR = '#daa520';
+const MUTED_COLOR = '#888888';
 
 export class MultiplayerLobby extends Scene {
     private elements: Phaser.GameObjects.GameObject[] = [];
     private playerCount = 0;
+    private roomCode = '';
+    private codeInput = '';
+    private transitioned = false;
 
     constructor() {
         super('MultiplayerLobby');
@@ -16,8 +21,11 @@ export class MultiplayerLobby extends Scene {
     create(): void {
         this.cameras.main.setBackgroundColor(GAME.BACKGROUND_COLOR);
         this.playerCount = 0;
+        this.transitioned = false;
+        this.roomCode = '';
+        this.codeInput = '';
 
-        // Cave background tiles (same as TitleScreen)
+        // Cave background
         const tileSize = 48;
         for (let y = 0; y < GAME.HEIGHT; y += tileSize) {
             for (let x = 0; x < GAME.WIDTH; x += tileSize) {
@@ -33,10 +41,11 @@ export class MultiplayerLobby extends Scene {
     private clearAll(): void {
         for (const el of this.elements) el.destroy();
         this.elements = [];
+        if (this.input.keyboard) this.input.keyboard.removeAllListeners();
     }
 
     // ========================================
-    // STATE: Menu
+    // MENU
     // ========================================
     private showMenu(): void {
         this.clearAll();
@@ -50,19 +59,42 @@ export class MultiplayerLobby extends Scene {
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(title);
 
-        y += 100;
+        y += 80;
 
-        const playBtn = this.createButton(cx, y, 'PLAY ONLINE', 260, 46, async () => {
+        const createBtn = this.createButton(cx, y, 'CREATE ROOM', 260, 46, async () => {
             try {
-                await initPlayroom();
+                this.showConnecting();
+                this.roomCode = await createRoom();
                 this.showWaiting();
             } catch (err) {
-                console.error('[LOBBY] Failed to init Playroom:', err);
+                console.error('Failed to create room:', err);
+                this.showMenu();
             }
         });
-        this.elements.push(playBtn);
+        this.elements.push(createBtn);
 
-        y += 70;
+        y += 60;
+
+        const joinBtn = this.createButton(cx, y, 'JOIN ROOM', 260, 46, () => {
+            this.showJoining();
+        });
+        this.elements.push(joinBtn);
+
+        y += 60;
+
+        const quickBtn = this.createButton(cx, y, 'QUICK MATCH', 260, 46, async () => {
+            try {
+                this.showConnecting();
+                this.roomCode = await quickMatch();
+                this.showWaiting();
+            } catch (err) {
+                console.error('Failed to quick match:', err);
+                this.showMenu();
+            }
+        });
+        this.elements.push(quickBtn);
+
+        y += 80;
 
         const backBtn = this.createButton(cx, y, 'BACK', 160, 40, () => {
             this.scene.start('TitleScreen');
@@ -71,40 +103,188 @@ export class MultiplayerLobby extends Scene {
     }
 
     // ========================================
-    // STATE: Waiting for opponent
+    // CONNECTING (brief loading state)
+    // ========================================
+    private showConnecting(): void {
+        this.clearAll();
+
+        const cx = GAME.WIDTH * 0.5;
+        const title = this.add.text(cx, GAME.HEIGHT * 0.45, 'CONNECTING...', {
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: TITLE_COLOR,
+            stroke: '#000000', strokeThickness: 6, fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(title);
+
+        this.tweens.add({
+            targets: title, alpha: 0.5, duration: 800,
+            yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        });
+    }
+
+    // ========================================
+    // WAITING (room created, show code)
     // ========================================
     private showWaiting(): void {
         this.clearAll();
         this.playerCount = 0;
+        this.transitioned = false;
 
         const cx = GAME.WIDTH * 0.5;
-        const y = SAFE_ZONE.TOP + 80;
+        let y = SAFE_ZONE.TOP + 50;
 
-        const title = this.add.text(cx, y, 'WAITING FOR OPPONENT...', {
+        const title = this.add.text(cx, y, 'WAITING FOR OPPONENT', {
             fontFamily: ARCADE_FONT, fontSize: '24px', color: TITLE_COLOR,
             stroke: '#000000', strokeThickness: 6, fontStyle: 'bold',
         }).setOrigin(0.5).setDepth(10);
         this.elements.push(title);
 
-        // Pulsing animation
         this.tweens.add({
             targets: title, alpha: 0.5, duration: 1000,
             yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
         });
 
-        // Track players joining
+        y += 80;
+
+        // Room code display
+        const codeText = this.add.text(cx, y, this.roomCode, {
+            fontFamily: ARCADE_FONT, fontSize: '48px', color: TITLE_COLOR,
+            stroke: '#000000', strokeThickness: 8, fontStyle: 'bold',
+            letterSpacing: 12,
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(codeText);
+
+        y += 50;
+
+        const sub = this.add.text(cx, y, 'Share this code with your friend', {
+            fontFamily: ARCADE_FONT, fontSize: '14px', color: SUB_COLOR,
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(sub);
+
+        y += 80;
+
+        const cancelBtn = this.createButton(cx, y, 'CANCEL', 180, 42, () => {
+            this.showMenu();
+        });
+        this.elements.push(cancelBtn);
+
+        // Listen for players
         onJoin((player) => {
             console.log('[LOBBY] Player joined:', player.id, player.isMe ? '(me)' : '');
             this.playerCount++;
-
-            if (this.playerCount >= 2) {
-                console.log('[LOBBY] 2 players joined, starting game');
+            if (this.playerCount >= 2 && !this.transitioned) {
+                this.transitioned = true;
                 this.scene.start('MultiplayerGame', {
                     isHost: getIsHost(),
                     myId: getMyId(),
                 });
             }
         });
+    }
+
+    // ========================================
+    // JOIN ROOM (enter code)
+    // ========================================
+    private showJoining(): void {
+        this.clearAll();
+        this.codeInput = '';
+
+        const cx = GAME.WIDTH * 0.5;
+        let y = SAFE_ZONE.TOP + 50;
+
+        const title = this.add.text(cx, y, 'ENTER ROOM CODE', {
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: TITLE_COLOR,
+            stroke: '#000000', strokeThickness: 6, fontStyle: 'bold',
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(title);
+
+        y += 80;
+
+        const boxW = 280;
+        const boxH = 60;
+        const boxCenterY = y;
+        const boxTop = boxCenterY - boxH * 0.5;
+
+        const boxGraphics = this.add.graphics();
+        boxGraphics.fillStyle(0x1a1a3a);
+        boxGraphics.fillRoundedRect(cx - boxW * 0.5, boxTop, boxW, boxH, 6);
+        boxGraphics.lineStyle(2, 0x7777cc);
+        boxGraphics.strokeRoundedRect(cx - boxW * 0.5, boxTop, boxW, boxH, 6);
+        this.elements.push(boxGraphics);
+
+        const inputText = this.add.text(cx, boxCenterY, '', {
+            fontFamily: ARCADE_FONT, fontSize: '28px', color: TITLE_COLOR,
+            fontStyle: 'bold', letterSpacing: 6,
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(inputText);
+
+        y += boxH * 0.5 + 20;
+
+        const hint = this.add.text(cx, y, 'Type the room code, then tap JOIN', {
+            fontFamily: ARCADE_FONT, fontSize: '12px', color: MUTED_COLOR,
+        }).setOrigin(0.5).setDepth(10);
+        this.elements.push(hint);
+
+        y += 40;
+
+        // Hidden HTML input for mobile keyboard
+        const htmlInput = document.createElement('input');
+        htmlInput.type = 'text';
+        htmlInput.autocomplete = 'off';
+        htmlInput.autocapitalize = 'off';
+        htmlInput.maxLength = 6;
+        htmlInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.01;width:1px;height:1px;font-size:16px;z-index:9999;';
+        document.body.appendChild(htmlInput);
+        htmlInput.focus();
+
+        boxGraphics.setInteractive(
+            new Phaser.Geom.Rectangle(cx - boxW * 0.5, boxTop, boxW, boxH),
+            Phaser.Geom.Rectangle.Contains
+        );
+        boxGraphics.on('pointerdown', () => htmlInput.focus());
+
+        htmlInput.addEventListener('input', () => {
+            this.codeInput = htmlInput.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6);
+            htmlInput.value = this.codeInput;
+            inputText.setText(this.codeInput);
+        });
+
+        const submitCode = async () => {
+            if (this.codeInput.length < 4) return;
+            try {
+                htmlInput.remove();
+                this.showConnecting();
+                await joinRoom(this.codeInput);
+                this.roomCode = this.codeInput;
+                this.showWaiting();
+            } catch (err) {
+                console.error('Failed to join room:', err);
+                hint.setText('Room not found. Try again.');
+                hint.setColor('#ff4444');
+                this.showJoining();
+            }
+        };
+
+        htmlInput.addEventListener('keydown', (event: KeyboardEvent) => {
+            if (event.key === 'Enter') submitCode();
+        });
+
+        const joinBtn = this.createButton(cx, y, 'JOIN', 180, 42, () => submitCode());
+        this.elements.push(joinBtn);
+
+        y += 55;
+
+        const cancelBtn = this.createButton(cx, y, 'CANCEL', 180, 42, () => {
+            htmlInput.remove();
+            this.showMenu();
+        });
+        this.elements.push(cancelBtn);
+
+        // Clean up HTML input on state change
+        const origClear = this.clearAll.bind(this);
+        this.clearAll = () => {
+            htmlInput.remove();
+            origClear();
+        };
     }
 
     // ========================================

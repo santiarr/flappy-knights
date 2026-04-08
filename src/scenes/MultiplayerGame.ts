@@ -59,8 +59,15 @@ export class MultiplayerGame extends Scene {
         this.localPlayerId = data.localPlayerId;
         this.roomCode = data.roomCode;
 
+        console.log("[GAME] MultiplayerGame.create", { localPlayerId: this.localPlayerId, roomCode: this.roomCode });
+
         const room = connection.getRoom();
-        if (!room) return;
+        if (!room) {
+            console.error("[GAME] No room connection! Returning to title.");
+            this.scene.start('TitleScreen');
+            return;
+        }
+        console.log("[GAME] Room connected:", room.roomId, "state:", room.state ? "yes" : "no");
 
         // Background (same cave tiles as single-player)
         this.cameras.main.setBackgroundColor(GAME.BACKGROUND_COLOR);
@@ -362,6 +369,8 @@ export class MultiplayerGame extends Scene {
 
     // === RENDERING ===
 
+    private frameCount = 0;
+
     update(_time: number, _delta: number): void {
         this.handleInput();
         this.renderFromState();
@@ -370,6 +379,13 @@ export class MultiplayerGame extends Scene {
     private renderFromState(): void {
         const state = connection.getState();
         if (!state) return;
+
+        this.frameCount++;
+        if (this.frameCount % 120 === 1) { // log every 2 seconds
+            let activeEnemies = 0;
+            state.enemies?.forEach((e: ClientEnemyState) => { if (e.active) activeEnemies++; });
+            console.log(`[GAME] frame=${this.frameCount} phase=${state.phase} wave=${state.wave} enemies=${activeEnemies} players=${state.players?.size ?? 0}`);
+        }
 
         // Render players
         if (state.players) {

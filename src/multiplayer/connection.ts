@@ -13,13 +13,21 @@ class ConnectionManager {
     private code = "";
 
     constructor() {
+        console.log("[MP] Colyseus URL:", COLYSEUS_URL);
         this.client = new Client(COLYSEUS_URL);
     }
 
     async createRoom(): Promise<Room> {
         this.disconnect();
         this.code = generateRoomCode();
-        this.room = await this.client.create("game", { code: this.code });
+        console.log("[MP] Creating room with code:", this.code);
+        try {
+            this.room = await this.client.create("game", { code: this.code });
+            console.log("[MP] Room created:", this.room.roomId, "session:", this.room.sessionId);
+        } catch (err) {
+            console.error("[MP] CREATE FAILED:", err);
+            throw err;
+        }
         this.setupRoomListeners();
         return this.room;
     }
@@ -27,16 +35,29 @@ class ConnectionManager {
     async joinRoom(code: string): Promise<Room> {
         this.disconnect();
         this.code = code.toUpperCase();
-        // The room's roomId IS the code
-        this.room = await this.client.joinById(this.code);
+        console.log("[MP] Joining room:", this.code);
+        try {
+            this.room = await this.client.joinById(this.code);
+            console.log("[MP] Joined room:", this.room.roomId, "session:", this.room.sessionId);
+        } catch (err) {
+            console.error("[MP] JOIN FAILED:", err);
+            throw err;
+        }
         this.setupRoomListeners();
         return this.room;
     }
 
     async quickMatch(): Promise<Room> {
         this.disconnect();
-        this.room = await this.client.joinOrCreate("game");
-        this.code = this.room.roomId;
+        console.log("[MP] Quick match...");
+        try {
+            this.room = await this.client.joinOrCreate("game");
+            this.code = this.room.roomId;
+            console.log("[MP] Quick match room:", this.room.roomId, "session:", this.room.sessionId);
+        } catch (err) {
+            console.error("[MP] QUICK MATCH FAILED:", err);
+            throw err;
+        }
         this.setupRoomListeners();
         return this.room;
     }

@@ -68,13 +68,15 @@ export class MultiplayerLobby extends Scene {
         y += 80;
 
         const createBtn = this.createButton(cx, y, 'CREATE ROOM', 260, 46, async () => {
+            console.log("[LOBBY] Create room clicked");
             try {
                 const room = await connection.createRoom();
                 this.localPlayerId = room.sessionId;
                 this.roomCode = connection.getCode();
+                console.log("[LOBBY] Room created, code:", this.roomCode, "playerId:", this.localPlayerId);
                 this.showWaiting();
             } catch (err) {
-                console.error('Failed to create room:', err);
+                console.error('[LOBBY] Failed to create room:', err);
             }
         });
         this.elements.push(createBtn);

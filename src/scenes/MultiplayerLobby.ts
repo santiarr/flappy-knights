@@ -161,10 +161,13 @@ export class MultiplayerLobby extends Scene {
 
         // Listen for state changes via room — when 2 players are in, start the game
         const room = connection.getRoom();
+        let transitioned = false;
         if (room) {
-            // Check if players collection exists on state and listen for additions
             const checkPlayers = () => {
+                if (transitioned) return;
                 if (room.state && room.state.players && room.state.players.size >= 2) {
+                    transitioned = true;
+                    console.log("[LOBBY] 2 players in room, starting game");
                     this.scene.start('MultiplayerGame', {
                         localPlayerId: this.localPlayerId,
                         roomCode: this.roomCode,
@@ -172,20 +175,12 @@ export class MultiplayerLobby extends Scene {
                 }
             };
 
-            // Listen for player_joined via server message
             this.eventHandler = (type: string, _data: Record<string, unknown>) => {
-                if (type === 'player_joined') {
-                    checkPlayers();
-                }
+                if (type === 'player_joined') checkPlayers();
             };
             connection.onEvent(this.eventHandler);
 
-            // Also listen via onStateChange for broader compatibility
-            room.onStateChange(() => {
-                checkPlayers();
-            });
-
-            // Check immediately in case both players are already in
+            room.onStateChange(() => checkPlayers());
             checkPlayers();
         }
     }

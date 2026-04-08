@@ -106,6 +106,7 @@ class ConnectionManager {
 
         // Register handlers for server messages we don't need to forward
         // but must register to avoid Colyseus SDK warnings
+        // Register all server broadcast types to avoid SDK warnings
         this.room.onMessage("connected", () => {});
         this.room.onMessage("player_joined", (data: Record<string, unknown>) => {
             for (const handler of this.eventHandlers) {
@@ -113,6 +114,9 @@ class ConnectionManager {
             }
         });
         this.room.onMessage("player_damaged", () => {});
+        this.room.onMessage("enemy_killed", () => {});
+        this.room.onMessage("egg_collected", () => {});
+        this.room.onMessage("egg_hatched", () => {});
     }
 
     disconnect(): void {

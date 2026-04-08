@@ -22,7 +22,6 @@ export class MultiplayerGame extends Scene {
     // Sprites
     private localSprite!: Phaser.GameObjects.Sprite;
     private opponentSprite!: Phaser.GameObjects.Sprite;
-    private enemySprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
     private eggSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
 
     // HUD
@@ -416,37 +415,46 @@ export class MultiplayerGame extends Scene {
         this.updateHUD();
     }
 
-    private enemySpriteTypes: Map<number, string> = new Map();
+    private enemySpriteSlots: (Phaser.GameObjects.Sprite | null)[] = [];
+    private enemySlotTypes: string[] = [];
 
-    private syncEnemySprites(enemies: { forEach: (cb: (e: ClientEnemyState) => void) => void }): void {
-        const activeIds = new Set<number>();
+    private syncEnemySprites(enemies: { forEach: (cb: (e: ClientEnemyState, i: number) => void) => void }): void {
+        let slotIndex = 0;
 
         enemies.forEach((e: ClientEnemyState) => {
-            if (!e.active) return;
-            const id = e.id;
-            activeIds.add(id);
+            const slot = slotIndex++;
+
+            // Ensure sprite array is big enough
+            while (this.enemySpriteSlots.length <= slot) {
+                this.enemySpriteSlots.push(null);
+                this.enemySlotTypes.push('');
+            }
+
+            if (!e.active) {
+                // Hide this slot's sprite
+                if (this.enemySpriteSlots[slot]) {
+                    this.enemySpriteSlots[slot]!.setVisible(false);
+                }
+                return;
+            }
 
             const prefix = ATLAS_PREFIX[e.enemyType] || 'bounder';
-            let sprite = this.enemySprites.get(id);
+            let sprite = this.enemySpriteSlots[slot];
 
-            // Recreate sprite if enemy type changed or sprite was destroyed
-            if (sprite && (this.enemySpriteTypes.get(id) !== e.enemyType || !sprite.active)) {
+            // Recreate if type changed
+            if (sprite && this.enemySlotTypes[slot] !== e.enemyType) {
                 sprite.destroy();
-                this.enemySprites.delete(id);
-                this.enemySpriteTypes.delete(id);
-                sprite = undefined;
+                sprite = null;
             }
 
             if (!sprite) {
-                try {
-                    const atlasKey = `${prefix}_idle`;
-                    if (!this.textures.exists(atlasKey)) return;
-                    const frames = this.textures.get(atlasKey).getFrameNames().sort();
-                    sprite = this.add.sprite(e.x, e.y, atlasKey, frames[0]);
-                    sprite.setScale(1.4).setDepth(9);
-                    this.enemySprites.set(id, sprite);
-                    this.enemySpriteTypes.set(id, e.enemyType);
-                } catch { return; }
+                const atlasKey = `${prefix}_idle`;
+                if (!this.textures.exists(atlasKey)) return;
+                const frames = this.textures.get(atlasKey).getFrameNames().sort();
+                sprite = this.add.sprite(e.x, e.y, atlasKey, frames[0]);
+                sprite.setScale(1.4).setDepth(9);
+                this.enemySpriteSlots[slot] = sprite;
+                this.enemySlotTypes[slot] = e.enemyType;
             }
 
             sprite.x = e.x;
@@ -454,19 +462,10 @@ export class MultiplayerGame extends Scene {
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 
-            try {
-                if (e.anim && this.anims.exists(e.anim) && sprite.anims?.currentAnim?.key !== e.anim) {
-                    sprite.play(e.anim, true);
-                }
-            } catch { /* animation not available for this sprite */ }
-        });
-
-        // Hide sprites for enemies no longer active
-        for (const [id, sprite] of this.enemySprites) {
-            if (!activeIds.has(id)) {
-                sprite.setVisible(false);
+            if (e.anim && this.anims.exists(e.anim) && sprite.anims?.currentAnim?.key !== e.anim) {
+                sprite.play(e.anim, true);
             }
-        }
+        });
     }
 
     private syncEggSprites(eggs: { forEach: (cb: (e: ClientEggState) => void) => void }): void {
@@ -523,9 +522,9 @@ export class MultiplayerGame extends Scene {
         }
         if (this.joystickGraphics) this.joystickGraphics.destroy();
         if (this.joystickKnob) this.joystickKnob.destroy();
-        this.enemySprites.forEach(s => s.destroy());
-        this.enemySprites.clear();
-        this.enemySpriteTypes.clear();
+        this.enemySpriteSlots.forEach(s => { if (s) s.destroy(); });
+        this.enemySpriteSlots = [];
+        this.enemySlotTypes = [];
         this.eggSprites.forEach(s => s.destroy());
         this.eggSprites.clear();
     }

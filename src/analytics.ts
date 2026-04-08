@@ -7,7 +7,9 @@ let sessionStart = 0;
 export function initAnalytics(): void {
     posthog.init(import.meta.env.VITE_POSTHOG_KEY as string, {
         api_host: import.meta.env.VITE_POSTHOG_HOST as string,
-        capture_pageview: true,
+        autocapture: false,
+        capture_pageview: false,
+        capture_pageleave: false,
         persistence: 'localStorage',
     });
 

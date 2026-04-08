@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize AudioContext on first user interaction
     const initAudio = () => {
         audioManager.init();
+        // Retry title music now that we have user interaction
+        audioManager.startTitleMusic();
         document.removeEventListener('pointerdown', initAudio);
         document.removeEventListener('keydown', initAudio);
     };

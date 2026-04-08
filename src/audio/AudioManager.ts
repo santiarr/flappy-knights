@@ -52,16 +52,19 @@ class AudioManager {
     }
 
     startTitleMusic(): void {
-        if (this.titlePlaying) return;
         this.stopBGM();
-        this.titlePlaying = true;
 
         if (!this.titleElement) {
             this.titleElement = new Audio('assets/audio/title.mp3');
             this.titleElement.loop = true;
         }
         this.titleElement.volume = GameState.isMuted ? 0 : TITLE_VOLUME;
-        this.titleElement.currentTime = 0;
+
+        // Only reset position if not already playing
+        if (!this.titlePlaying) {
+            this.titleElement.currentTime = 0;
+        }
+        this.titlePlaying = true;
         this.titleElement.play().catch(() => {});
     }
 

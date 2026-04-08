@@ -429,18 +429,24 @@ export class MultiplayerGame extends Scene {
             const prefix = ATLAS_PREFIX[e.enemyType] || 'bounder';
             let sprite = this.enemySprites.get(id);
 
-            // Recreate sprite if enemy type changed (pool slot reused)
-            if (sprite && this.enemySpriteTypes.get(id) !== e.enemyType) {
+            // Recreate sprite if enemy type changed or sprite was destroyed
+            if (sprite && (this.enemySpriteTypes.get(id) !== e.enemyType || !sprite.active)) {
                 sprite.destroy();
+                this.enemySprites.delete(id);
+                this.enemySpriteTypes.delete(id);
                 sprite = undefined;
             }
 
             if (!sprite) {
-                const frames = this.textures.get(`${prefix}_idle`).getFrameNames().sort();
-                sprite = this.add.sprite(e.x, e.y, `${prefix}_idle`, frames[0]);
-                sprite.setScale(1.4).setDepth(9);
-                this.enemySprites.set(id, sprite);
-                this.enemySpriteTypes.set(id, e.enemyType);
+                try {
+                    const atlasKey = `${prefix}_idle`;
+                    if (!this.textures.exists(atlasKey)) return;
+                    const frames = this.textures.get(atlasKey).getFrameNames().sort();
+                    sprite = this.add.sprite(e.x, e.y, atlasKey, frames[0]);
+                    sprite.setScale(1.4).setDepth(9);
+                    this.enemySprites.set(id, sprite);
+                    this.enemySpriteTypes.set(id, e.enemyType);
+                } catch { return; }
             }
 
             sprite.x = e.x;
@@ -448,9 +454,11 @@ export class MultiplayerGame extends Scene {
             sprite.setFlipX(e.flipX);
             sprite.setVisible(true);
 
-            if (e.anim && sprite.anims && this.anims.exists(e.anim) && sprite.anims.currentAnim?.key !== e.anim) {
-                sprite.play(e.anim, true);
-            }
+            try {
+                if (e.anim && this.anims.exists(e.anim) && sprite.anims?.currentAnim?.key !== e.anim) {
+                    sprite.play(e.anim, true);
+                }
+            } catch { /* animation not available for this sprite */ }
         });
 
         // Hide sprites for enemies no longer active

@@ -59,6 +59,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         this.setScale(1.4);
         this.setDepth(9);
+
+        // Subtle red glow outline
+        if (this.postFX) {
+            this.postFX.addGlow(0xff4444, 1.5, 0, false, 0.1, 8);
+        }
+
         this.deactivate();
     }
 

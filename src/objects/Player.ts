@@ -26,13 +26,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         body.setSize(30, 35);
         body.setOffset(17, 12);
 
-        // Golden aura glow behind the player
-        this.aura = scene.add.graphics();
-        this.aura.setDepth(9); // behind player (depth 10)
+        this.aura = scene.add.graphics(); // kept for compatibility
+        this.aura.setDepth(9);
 
         this.setScale(1.4);
         this.setDepth(10);
         this.play('player_idle_anim');
+
+        // Golden glow outline using Phaser's built-in postFX
+        if (this.postFX) {
+            this.postFX.addGlow(0xffd700, 2, 0, false, 0.1, 10);
+        }
     }
 
     flap(): void {
@@ -92,21 +96,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.onGround = body.blocked.down || body.touching.down;
         body.setDragX(this.onGround ? PLAYER.DRAG : PLAYER.AIR_DRAG);
 
-        // Pulsing outline around the player sprite
-        this.auraTime += delta * 0.003;
-        this.aura.clear();
-        const pulse = 0.4 + Math.sin(this.auraTime) * 0.2;
-        const w = this.displayWidth;
-        const h = this.displayHeight;
-        // Draw outline rectangle around sprite bounds
-        this.aura.lineStyle(2, 0xffd700, pulse);
-        this.aura.strokeRoundedRect(
-            this.x - w * 0.5 - 2,
-            this.y - h * 0.5 - 2,
-            w + 4,
-            h + 4,
-            3
-        );
+        this.aura.clear(); // graphics kept for compatibility but unused
 
         // Animation state
         const current = this.anims.currentAnim?.key;

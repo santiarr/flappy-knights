@@ -237,9 +237,17 @@ export class MultiplayerGame extends Scene {
             this.physics.add.collider(player, this.platforms);
             mp.player = player;
 
-            // Tint second player
-            if (isSecondPlayer) {
+            // Glow for players
+            if (playroomPlayer.isMe) {
+                // Local player: gold glow (already added in Player constructor)
+            } else {
+                // Opponent: colored glow using their Playroom color
                 player.setTint(0xff6666);
+                if (player.postFX) {
+                    player.postFX.clear();
+                    const color = parseInt(playroomPlayer.color.replace('#', ''), 16) || 0x44ff44;
+                    player.postFX.addGlow(color, 2, 0, false, 0.1, 10);
+                }
             }
 
             // Set up collisions for this player vs enemies/eggs/lava
@@ -250,8 +258,18 @@ export class MultiplayerGame extends Scene {
             const sprite = this.add.sprite(spawnX, spawnY, 'player_idle', frames[0]);
             sprite.setScale(1.4).setDepth(10);
             sprite.play('player_idle_anim');
-            if (isSecondPlayer) {
+            if (playroomPlayer.isMe) {
+                // Local player: gold glow
+                if (sprite.postFX) {
+                    sprite.postFX.addGlow(0xffd700, 2, 0, false, 0.1, 10);
+                }
+            } else {
+                // Opponent: their Playroom color glow
                 sprite.setTint(0xff6666);
+                if (sprite.postFX) {
+                    const color = parseInt(playroomPlayer.color.replace('#', ''), 16) || 0x44ff44;
+                    sprite.postFX.addGlow(color, 2, 0, false, 0.1, 10);
+                }
             }
             mp.sprite = sprite;
         }

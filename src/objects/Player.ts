@@ -92,17 +92,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.onGround = body.blocked.down || body.touching.down;
         body.setDragX(this.onGround ? PLAYER.DRAG : PLAYER.AIR_DRAG);
 
-        // Draw golden aura
+        // Pulsing outline around the player sprite
         this.auraTime += delta * 0.003;
         this.aura.clear();
-        const pulse = 0.15 + Math.sin(this.auraTime) * 0.08;
-        const radius = 30 + Math.sin(this.auraTime * 1.3) * 4;
-        // Outer glow
-        this.aura.fillStyle(0xffd700, pulse * 0.4);
-        this.aura.fillEllipse(this.x, this.y + 5, radius * 2.2, radius * 1.6);
-        // Inner glow
-        this.aura.fillStyle(0xffd700, pulse * 0.7);
-        this.aura.fillEllipse(this.x, this.y + 5, radius * 1.4, radius * 1.0);
+        const pulse = 0.4 + Math.sin(this.auraTime) * 0.2;
+        const w = this.displayWidth;
+        const h = this.displayHeight;
+        // Draw outline rectangle around sprite bounds
+        this.aura.lineStyle(2, 0xffd700, pulse);
+        this.aura.strokeRoundedRect(
+            this.x - w * 0.5 - 2,
+            this.y - h * 0.5 - 2,
+            w + 4,
+            h + 4,
+            3
+        );
 
         // Animation state
         const current = this.anims.currentAnim?.key;

@@ -21,6 +21,9 @@ export class Boot extends Scene {
 
         // Pterodactyl
         this.load.atlas('ptero_fly', 'assets/knights/ptero-fly.png', 'assets/knights/ptero-fly.json');
+
+        // Background
+        this.load.image('bg_castle', 'assets/bg-castle.jpg');
     }
 
     create(): void {

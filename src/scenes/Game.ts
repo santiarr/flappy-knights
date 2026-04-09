@@ -17,6 +17,7 @@ export class Game extends Scene {
     private enemies: Enemy[] = [];
     private eggs: Egg[] = [];
     private platforms!: Phaser.Physics.Arcade.StaticGroup;
+    private bgImage!: Phaser.GameObjects.Image;
     private lavaPit!: LavaPit;
     private pterodactyl!: Pterodactyl;
     private lavaTroll!: LavaTroll;
@@ -132,28 +133,14 @@ export class Game extends Scene {
     }
 
     private drawCaveBackground(): void {
-        // Tile cave wall pixel art across the screen
-        const tileSize = 48; // 16 * 3
-        const numTileVariants = 3;
-
-        for (let y = 0; y < GAME.HEIGHT; y += tileSize) {
-            for (let x = 0; x < GAME.WIDTH; x += tileSize) {
-                const variant = (Math.floor(x / tileSize) + Math.floor(y / tileSize)) % numTileVariants;
-                const tile = this.add.image(x + tileSize * 0.5, y + tileSize * 0.5, `cave_tile_${variant}`);
-                tile.setDepth(-10);
-            }
-        }
-
-        // Scatter decorative stalactite-like rocks at low alpha
-        for (let i = 0; i < 12; i++) {
-            const rx = Phaser.Math.Between(0, GAME.WIDTH);
-            const ry = Phaser.Math.Between(0, GAME.HEIGHT - 120);
-            const variant = Phaser.Math.Between(0, 2);
-            const rock = this.add.image(rx, ry, `cave_tile_${variant}`);
-            rock.setDepth(-9);
-            rock.setAlpha(0.15 + Math.random() * 0.15);
-            rock.setScale(0.6 + Math.random() * 0.8);
-        }
+        // Castle background image — scale to cover the game area with extra width for parallax
+        this.bgImage = this.add.image(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.5, 'bg_castle');
+        // Scale to cover height, allow extra width for parallax movement
+        const scaleY = GAME.HEIGHT / this.bgImage.height;
+        const scaleX = (GAME.WIDTH + 100) / this.bgImage.width; // extra 100px for parallax room
+        const scale = Math.max(scaleX, scaleY);
+        this.bgImage.setScale(scale);
+        this.bgImage.setDepth(-10);
     }
 
     private createEnemyPool(count: number): void {
@@ -745,6 +732,14 @@ export class Game extends Scene {
 
     update(time: number, delta: number): void {
         if (this.isGameOver || this.isPaused) return;
+
+        // Parallax background — shift based on player position
+        if (this.bgImage) {
+            const offsetX = (this.player.x - GAME.WIDTH * 0.5) / GAME.WIDTH;
+            const offsetY = (this.player.y - GAME.HEIGHT * 0.5) / GAME.HEIGHT;
+            this.bgImage.x = GAME.WIDTH * 0.5 - offsetX * 30;
+            this.bgImage.y = GAME.HEIGHT * 0.5 - offsetY * 15;
+        }
 
         this.handleInput(delta);
         this.player.update(time, delta);

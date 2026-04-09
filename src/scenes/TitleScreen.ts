@@ -47,7 +47,9 @@ export class TitleScreen extends Scene {
         audioManager.startTitleMusic();
 
         if (isFirstPlay()) {
-            this.showMainMenuFirstPlay();
+            markTutorialDone();
+            this.scene.start('Tutorial');
+            return;
         } else {
             this.showMainMenu();
         }

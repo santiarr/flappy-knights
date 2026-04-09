@@ -47,7 +47,7 @@ export class TitleScreen extends Scene {
         audioManager.startTitleMusic();
 
         if (isFirstPlay()) {
-            this.showTutorial();
+            this.showMainMenuFirstPlay();
         } else {
             this.showMainMenu();
         }
@@ -96,7 +96,7 @@ export class TitleScreen extends Scene {
         y += 55;
 
         // HOW TO PLAY button
-        const tutBtn = this.createButton(cx, y, 'HOW TO PLAY', 220, 42, () => this.showTutorial());
+        const tutBtn = this.createButton(cx, y, 'HOW TO PLAY', 220, 42, () => this.startTutorialScene());
         this.mainElements.push(tutBtn);
 
         y += 60;
@@ -114,6 +114,63 @@ export class TitleScreen extends Scene {
         if (this.input.keyboard) {
             this.input.keyboard.once('keydown-SPACE', () => this.startGame());
         }
+    }
+
+    // ========================================
+    // FIRST-PLAY MENU (prominent tutorial button)
+    // ========================================
+    private showMainMenuFirstPlay(): void {
+        this.clearTutorial();
+        this.showingTutorial = false;
+
+        const cx = GAME.WIDTH * 0.5;
+        let y = SAFE_ZONE.TOP + 50;
+
+        // Title
+        const title = this.add.text(cx, y, 'FLAPPY KNIGHTS', {
+            fontFamily: ARCADE_FONT, fontSize: '44px', color: TITLE_COLOR,
+            stroke: '#000000', strokeThickness: 8, fontStyle: 'bold', align: 'center',
+        }).setOrigin(0.5).setDepth(10);
+        this.mainElements.push(title);
+
+        this.tweens.add({ targets: title, alpha: 0.7, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+        y += 50;
+
+        const sub = this.add.text(cx, y, 'AERIAL LANCE COMBAT', {
+            fontFamily: ARCADE_FONT, fontSize: '16px', color: SUB_COLOR, letterSpacing: 6,
+        }).setOrigin(0.5).setDepth(10);
+        this.mainElements.push(sub);
+
+        y += 70;
+
+        // TUTORIAL button — prominent for first-time players
+        const tutBtn = this.createButton(cx, y, 'TUTORIAL', 220, 50, () => this.startTutorialScene());
+        this.mainElements.push(tutBtn);
+
+        y += 55;
+
+        // PLAY button
+        const playBtn = this.createButton(cx, y, 'PLAY', 220, 42, () => this.startGame());
+        this.mainElements.push(playBtn);
+
+        y += 60;
+
+        const hint = IS_TOUCH
+            ? 'Joystick to move | Tap to flap'
+            : 'Arrow keys to move | Space to flap';
+        const hintText = this.add.text(cx, y, hint, {
+            fontFamily: ARCADE_FONT, fontSize: '12px', color: MUTED_COLOR,
+        }).setOrigin(0.5).setDepth(10);
+        this.mainElements.push(hintText);
+    }
+
+    private startTutorialScene(): void {
+        capture('tutorial started', { is_first_play: isFirstPlay() });
+        this.cameras.main.fadeOut(300, 0, 0, 0);
+        this.time.delayedCall(300, () => {
+            this.scene.start('Tutorial');
+        });
     }
 
     // ========================================

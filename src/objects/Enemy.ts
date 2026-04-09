@@ -157,6 +157,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         }
 
         this.wrapAndClamp(body);
+
+        // Animation state (like Player)
+        const prefix = ATLAS_PREFIX[this.enemyType];
+        const current = this.anims.currentAnim?.key;
+        if (!this.isOnPlatform) {
+            // In the air — use charge/run anim
+            if (current !== `${prefix}_charge_anim`) this.play(`${prefix}_charge_anim`);
+        } else if (Math.abs(body.velocity.x) > 20) {
+            if (current !== `${prefix}_run_anim`) this.play(`${prefix}_run_anim`);
+        } else {
+            if (current !== `${prefix}_idle_anim`) this.play(`${prefix}_idle_anim`);
+        }
     }
 
     // ========================================

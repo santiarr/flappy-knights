@@ -25,15 +25,10 @@ export class MultiplayerLobby extends Scene {
         this.roomCode = '';
         this.codeInput = '';
 
-        // Cave background
-        const tileSize = 48;
-        for (let y = 0; y < GAME.HEIGHT; y += tileSize) {
-            for (let x = 0; x < GAME.WIDTH; x += tileSize) {
-                const variant = (Math.floor(x / tileSize) + Math.floor(y / tileSize)) % 3;
-                this.add.image(x + tileSize * 0.5, y + tileSize * 0.5, `cave_tile_${variant}`)
-                    .setDepth(-10).setAlpha(0.5);
-            }
-        }
+        // Castle background
+        const bg = this.add.image(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.5, 'bg_castle');
+        const bgScale = Math.max(GAME.WIDTH / bg.width, GAME.HEIGHT / bg.height);
+        bg.setScale(bgScale).setDepth(-10).setAlpha(0.5);
 
         this.showMenu();
     }

@@ -962,26 +962,9 @@ export class MultiplayerGame extends Scene {
     // ==========================================
 
     private drawCaveBackground(): void {
-        const tileSize = 48;
-        const numTileVariants = 3;
-
-        for (let y = 0; y < GAME.HEIGHT; y += tileSize) {
-            for (let x = 0; x < GAME.WIDTH; x += tileSize) {
-                const variant = (Math.floor(x / tileSize) + Math.floor(y / tileSize)) % numTileVariants;
-                const tile = this.add.image(x + tileSize * 0.5, y + tileSize * 0.5, `cave_tile_${variant}`);
-                tile.setDepth(-10);
-            }
-        }
-
-        for (let i = 0; i < 12; i++) {
-            const rx = Phaser.Math.Between(0, GAME.WIDTH);
-            const ry = Phaser.Math.Between(0, GAME.HEIGHT - 120);
-            const variant = Phaser.Math.Between(0, 2);
-            const rock = this.add.image(rx, ry, `cave_tile_${variant}`);
-            rock.setDepth(-9);
-            rock.setAlpha(0.15 + Math.random() * 0.15);
-            rock.setScale(0.6 + Math.random() * 0.8);
-        }
+        const bg = this.add.image(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.5, 'bg_castle');
+        const bgScale = Math.max(GAME.WIDTH / bg.width, GAME.HEIGHT / bg.height);
+        bg.setScale(bgScale).setDepth(-10);
     }
 
     private createHUD(): void {

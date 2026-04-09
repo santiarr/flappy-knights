@@ -133,14 +133,14 @@ export class Game extends Scene {
     }
 
     private drawCaveBackground(): void {
-        // Castle background image — scale to cover the game area with extra width for parallax
+        // Castle background — dimmed and scaled up for parallax room
         this.bgImage = this.add.image(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.5, 'bg_castle');
-        // Scale to cover height, allow extra width for parallax movement
         const scaleY = GAME.HEIGHT / this.bgImage.height;
-        const scaleX = (GAME.WIDTH + 100) / this.bgImage.width; // extra 100px for parallax room
-        const scale = Math.max(scaleX, scaleY);
+        const scaleX = (GAME.WIDTH + 200) / this.bgImage.width;
+        const scale = Math.max(scaleX, scaleY) * 1.15; // extra 15% for parallax room
         this.bgImage.setScale(scale);
         this.bgImage.setDepth(-10);
+        this.bgImage.setAlpha(0.4); // dim it — looks farther away
     }
 
     private createEnemyPool(count: number): void {
@@ -737,8 +737,8 @@ export class Game extends Scene {
         if (this.bgImage) {
             const offsetX = (this.player.x - GAME.WIDTH * 0.5) / GAME.WIDTH;
             const offsetY = (this.player.y - GAME.HEIGHT * 0.5) / GAME.HEIGHT;
-            this.bgImage.x = GAME.WIDTH * 0.5 - offsetX * 30;
-            this.bgImage.y = GAME.HEIGHT * 0.5 - offsetY * 15;
+            this.bgImage.x = GAME.WIDTH * 0.5 - offsetX * 60;
+            this.bgImage.y = GAME.HEIGHT * 0.5 - offsetY * 30;
         }
 
         this.handleInput(delta);

@@ -116,7 +116,7 @@ export class Tutorial extends Scene {
     private drawCaveBackground(): void {
         const bg = this.add.image(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.5, 'bg_castle');
         const bgScale = Math.max(GAME.WIDTH / bg.width, GAME.HEIGHT / bg.height);
-        bg.setScale(bgScale).setDepth(-10);
+        bg.setScale(bgScale).setDepth(-10).setAlpha(0.4);
     }
 
     // ========================================

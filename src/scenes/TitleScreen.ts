@@ -318,20 +318,30 @@ export class TitleScreen extends Scene {
         // --- Buttons ---
         const btnY = GAME.HEIGHT - 55;
         if (!isFirstPlay()) {
-            // Two buttons side by side
-            const backBtn = this.createButton(cx - 150, btnY, 'BACK', 120, 40, () => {
+            const backBtn = this.createButton(cx - 200, btnY, 'BACK', 120, 40, () => {
                 this.showMainMenu();
             });
             this.tutorialElements.push(backBtn);
 
-            const gotItBtn = this.createButton(cx + 80, btnY, 'PLAY!', 180, 40, () => {
+            const tutBtn = this.createButton(cx, btnY, 'PLAY TUTORIAL', 180, 40, () => {
+                markTutorialDone();
+                this.scene.start('Tutorial');
+            });
+            this.tutorialElements.push(tutBtn);
+
+            const gotItBtn = this.createButton(cx + 200, btnY, 'PLAY!', 120, 40, () => {
                 markTutorialDone();
                 this.startGame();
             });
             this.tutorialElements.push(gotItBtn);
         } else {
-            // Single centered button
-            const gotItBtn = this.createButton(cx, btnY, 'GOT IT — PLAY!', 250, 45, () => {
+            const tutBtn = this.createButton(cx - 130, btnY, 'PLAY TUTORIAL', 220, 45, () => {
+                markTutorialDone();
+                this.scene.start('Tutorial');
+            });
+            this.tutorialElements.push(tutBtn);
+
+            const gotItBtn = this.createButton(cx + 130, btnY, 'SKIP — PLAY!', 220, 45, () => {
                 markTutorialDone();
                 this.startGame();
             });

@@ -247,7 +247,8 @@ export class MultiplayerGame extends Scene {
                 player.setTint(0xff6666);
                 if (player.postFX) {
                     player.postFX.clear();
-                    const color = parseInt(playroomPlayer.color.replace('#', ''), 16) || 0x44ff44;
+                    const colorStr = typeof playroomPlayer.color === 'string' ? playroomPlayer.color : '#44ff44';
+                    const color = parseInt(colorStr.replace('#', ''), 16) || 0x44ff44;
                     player.postFX.addGlow(color, 2, 0, false, 0.1, 10);
                 }
             }
@@ -272,7 +273,8 @@ export class MultiplayerGame extends Scene {
                 // Opponent: their Playroom color glow
                 sprite.setTint(0xff6666);
                 if (sprite.postFX) {
-                    const color = parseInt(playroomPlayer.color.replace('#', ''), 16) || 0x44ff44;
+                    const colorStr = typeof playroomPlayer.color === 'string' ? playroomPlayer.color : '#44ff44';
+                    const color = parseInt(colorStr.replace('#', ''), 16) || 0x44ff44;
                     sprite.postFX.addGlow(color, 2, 0, false, 0.1, 10);
                 }
             }

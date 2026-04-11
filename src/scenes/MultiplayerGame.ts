@@ -26,6 +26,8 @@ interface MPPlayer {
     player?: Player;
     // Non-host only: plain sprite for rendering
     sprite?: Phaser.GameObjects.Sprite;
+    // Name label floating above player
+    nameLabel?: Phaser.GameObjects.Text;
     // Shared stats
     score: number;
     lives: number;
@@ -250,6 +252,9 @@ export class MultiplayerGame extends Scene {
                 }
             }
 
+            // Zero out velocity on spawn to prevent dashing
+            (player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+
             // Set up collisions for this player vs enemies/eggs/lava
             this.setupPlayerCollisions(mp);
         } else {
@@ -274,13 +279,25 @@ export class MultiplayerGame extends Scene {
             mp.sprite = sprite;
         }
 
+        // Name label above player
+        const labelText = playroomPlayer.isMe ? 'YOU' : 'P2';
+        const labelColor = playroomPlayer.isMe ? '#ffd700' : '#ff6666';
+        mp.nameLabel = this.add.text(spawnX, spawnY - 45, labelText, {
+            fontFamily: '"Courier New", Courier, monospace',
+            fontSize: '14px',
+            color: labelColor,
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(100);
+
         // Track local player
         if (playroomPlayer.isMe) {
             this.localMPPlayer = mp;
         }
 
         this.mpPlayers.push(mp);
-        console.log(`[MP] Player joined: ${playroomPlayer.id} isMe=${playroomPlayer.isMe} total=${this.mpPlayers.length}`);
+        console.log(`[MP] Player joined: ${playroomPlayer.id} isMe=${playroomPlayer.isMe} isHost=${this.isHost} total=${this.mpPlayers.length}`);
 
         // Handle quit
         playroomPlayer.onQuit(() => {
@@ -676,27 +693,31 @@ export class MultiplayerGame extends Scene {
 
     private readHostInputs(): void {
         for (const mp of this.mpPlayers) {
+            if (mp.state.isMe) continue; // host handles own input directly
             if (!mp.player || mp.isRespawning) continue;
 
             const inputState = mp.state.getState('input') as { action: string } | null;
-            if (!inputState) continue;
+            if (!inputState) {
+                // No input yet — stop horizontal
+                mp.player.stopHorizontal();
+                continue;
+            }
 
             const action = inputState.action;
-            mp.state.setState('input', null); // consume
 
-            switch (action) {
-                case 'flap':
-                    mp.player.flap();
-                    break;
-                case 'left':
-                    mp.player.moveLeft(16);
-                    break;
-                case 'right':
-                    mp.player.moveRight(16);
-                    break;
-                case 'stop':
-                    mp.player.stopHorizontal();
-                    break;
+            // Check for flap (separate state key)
+            const flapTime = mp.state.getState('flap') as number | null;
+            if (flapTime && flapTime !== (mp as Record<string, unknown>).lastFlapTime) {
+                (mp as Record<string, unknown>).lastFlapTime = flapTime;
+                mp.player.flap();
+            }
+
+            if (action === 'left') {
+                mp.player.moveLeft(16);
+            } else if (action === 'right') {
+                mp.player.moveRight(16);
+            } else if (action === 'stop') {
+                mp.player.stopHorizontal();
             }
         }
     }
@@ -707,6 +728,11 @@ export class MultiplayerGame extends Scene {
             if (!mp.player) continue;
 
             const body = mp.player.body as Phaser.Physics.Arcade.Body;
+            // Update name label position
+            if (mp.nameLabel) {
+                mp.nameLabel.setPosition(mp.player.x, mp.player.y - 45);
+            }
+
             const posState: PosState = {
                 x: mp.player.x,
                 y: mp.player.y,
@@ -777,12 +803,15 @@ export class MultiplayerGame extends Scene {
             this.touchFlap = false;
         }
 
-        // Send input to host
-        if (doFlap) {
-            setMyInput('flap');
-        } else if (moveDir !== this.lastSentInput) {
+        // Send direction to host (always send so host can read it continuously)
+        if (moveDir !== this.lastSentInput) {
             setMyInput(moveDir);
             this.lastSentInput = moveDir;
+        }
+        // Send flap separately
+        if (doFlap) {
+            const me = this.localMPPlayer?.state;
+            if (me) me.setState('flap', Date.now()); // unique value each time
         }
     }
 
@@ -850,6 +879,11 @@ export class MultiplayerGame extends Scene {
             // Lerp position
             sprite.x = Phaser.Math.Linear(sprite.x, pos.x, 0.3);
             sprite.y = Phaser.Math.Linear(sprite.y, pos.y, 0.3);
+
+            // Update name label
+            if (mp.nameLabel) {
+                mp.nameLabel.setPosition(sprite.x, sprite.y - 45);
+            }
             sprite.setFlipX(pos.flipX);
 
             // Invulnerability flash
@@ -1201,8 +1235,21 @@ export class MultiplayerGame extends Scene {
         this.updateHUD();
     }
 
+    private mpFrameCount = 0;
+
     private updateHost(time: number, delta: number): void {
         if (!this.gameStarted) return;
+
+        this.mpFrameCount++;
+        if (this.mpFrameCount % 120 === 1) {
+            for (const mp of this.mpPlayers) {
+                const p = mp.player;
+                if (p) {
+                    const body = p.body as Phaser.Physics.Arcade.Body;
+                    console.log(`[HOST] player=${mp.id.slice(0,4)} isMe=${mp.state.isMe} x=${Math.round(p.x)} y=${Math.round(p.y)} vx=${Math.round(body.velocity.x)} vy=${Math.round(body.velocity.y)} input=${JSON.stringify(mp.state.getState('input'))}`);
+                }
+            }
+        }
 
         // Read remote player inputs
         this.readHostInputs();

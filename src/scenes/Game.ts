@@ -387,8 +387,46 @@ export class Game extends Scene {
             }
         }
 
+        // After wave 5: drop the ground platforms into the lava
+        if (wave === 6) {
+            this.dropGroundPlatforms();
+        }
+
         this.updateHUD();
         EventBus.emit(Events.GAME_NEXT_WAVE, { wave });
+    }
+
+    private groundDropped = false;
+
+    private dropGroundPlatforms(): void {
+        if (this.groundDropped) return;
+        this.groundDropped = true;
+
+        this.showWaveText(GameState.wave, 'THE FLOOR CRUMBLES!');
+
+        // Shake the screen
+        this.cameras.main.shake(500, 0.015);
+
+        // Get the first two platforms (ground level at y:480)
+        const children = this.platforms.getChildren() as Phaser.Physics.Arcade.Sprite[];
+        const groundPlatforms = children.filter(p => p.y >= 480);
+
+        for (const plat of groundPlatforms) {
+            // Disable physics immediately so players fall through
+            (plat.body as Phaser.Physics.Arcade.StaticBody).enable = false;
+
+            // Tween the visual down into lava and fade out
+            this.tweens.add({
+                targets: plat,
+                y: plat.y + 80,
+                alpha: 0,
+                duration: 1200,
+                ease: 'Power2',
+                onComplete: () => {
+                    plat.setVisible(false);
+                },
+            });
+        }
     }
 
     private spawnBonusEggs(): void {

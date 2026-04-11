@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME, PLAYER } from '../core/Constants';
 import { EventBus, Events } from '../core/EventBus';
+import type { PowerUpType } from './PowerUp';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
     private isInvulnerable = false;
@@ -9,6 +10,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private isMoving = false;
     private aura: Phaser.GameObjects.Graphics;
     private auraTime = 0;
+    private activePowerUp: PowerUpType | null = null;
+    private powerUpTimer = 0;
+    private hasShield = false;
+    private baseSpeed = PLAYER.SPEED;
+    private baseFlapForce = PLAYER.FLAP_FORCE;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         // Use first frame from idle atlas
@@ -41,13 +47,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     flap(): void {
         const body = this.body as Phaser.Physics.Arcade.Body;
-        const newVY = Math.max(body.velocity.y + PLAYER.FLAP_FORCE, -PLAYER.MAX_VELOCITY_Y);
+        const newVY = Math.max(body.velocity.y + this.getFlapForce(), -PLAYER.MAX_VELOCITY_Y);
         body.setVelocityY(newVY);
         EventBus.emit(Events.SPECTACLE_ACTION);
     }
 
     moveLeft(_delta: number): void {
         const body = this.body as Phaser.Physics.Arcade.Body;
+        body.setMaxVelocity(this.getSpeed(), PLAYER.MAX_VELOCITY_Y);
         body.setAccelerationX(-PLAYER.ACCELERATION);
         this.setFlipX(true);
         this.isMoving = true;
@@ -55,6 +62,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     moveRight(_delta: number): void {
         const body = this.body as Phaser.Physics.Arcade.Body;
+        body.setMaxVelocity(this.getSpeed(), PLAYER.MAX_VELOCITY_Y);
         body.setAccelerationX(PLAYER.ACCELERATION);
         this.setFlipX(false);
         this.isMoving = true;
@@ -80,6 +88,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     damage(): void {
         if (this.isInvulnerable) return;
+        if (this.hasShield) {
+            this.consumeShield();
+            // Visual feedback — flash white
+            this.setTint(0xffffff);
+            this.scene.time.delayedCall(200, () => this.clearTint());
+            return;
+        }
         this.isInvulnerable = true;
         this.invulnerableTimer = PLAYER.INVULNERABLE_DURATION;
         EventBus.emit(Events.PLAYER_DAMAGED);
@@ -108,6 +123,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             if (current !== 'player_idle_anim') this.play('player_idle_anim');
         }
 
+        // Power-up timer
+        if (this.activePowerUp && this.powerUpTimer > 0) {
+            this.powerUpTimer -= delta;
+            if (this.powerUpTimer <= 0) {
+                this.clearPowerUp();
+            }
+        }
+
         // Invulnerability
         if (this.isInvulnerable) {
             this.invulnerableTimer -= delta;
@@ -117,5 +140,56 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                 this.setAlpha(1);
             }
         }
+    }
+
+    applyPowerUp(type: PowerUpType): void {
+        // Clear previous power-up
+        this.clearPowerUp();
+        this.activePowerUp = type;
+
+        switch (type) {
+            case 'speed':
+                this.powerUpTimer = 6000;
+                // Speed is applied in moveLeft/moveRight via getSpeed()
+                break;
+            case 'flap':
+                this.powerUpTimer = 6000;
+                // Flap force is applied in flap() via getFlapForce()
+                break;
+            case 'shield':
+                this.hasShield = true;
+                this.powerUpTimer = 30000; // shield lasts until hit, but 30s max
+                // Visual: add green tint
+                this.setTint(0x88ff88);
+                break;
+        }
+    }
+
+    clearPowerUp(): void {
+        this.activePowerUp = null;
+        this.powerUpTimer = 0;
+        this.hasShield = false;
+        this.clearTint();
+    }
+
+    getActivePowerUp(): PowerUpType | null {
+        return this.activePowerUp;
+    }
+
+    hasActiveShield(): boolean {
+        return this.hasShield;
+    }
+
+    consumeShield(): void {
+        this.hasShield = false;
+        this.clearPowerUp();
+    }
+
+    private getSpeed(): number {
+        return this.activePowerUp === 'speed' ? this.baseSpeed * 1.5 : this.baseSpeed;
+    }
+
+    private getFlapForce(): number {
+        return this.activePowerUp === 'flap' ? this.baseFlapForce * 1.4 : this.baseFlapForce;
     }
 }

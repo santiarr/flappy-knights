@@ -10,6 +10,7 @@ import { LavaPit } from '../objects/LavaPit';
 import { Pterodactyl } from '../objects/Pterodactyl';
 import { LavaTroll } from '../objects/LavaTroll';
 import { SpectacleManager } from '../systems/SpectacleManager';
+import { PowerUp } from '../objects/PowerUp';
 import { audioManager } from '../audio/AudioManager';
 
 export class Game extends Scene {
@@ -22,6 +23,9 @@ export class Game extends Scene {
     private pterodactyl!: Pterodactyl;
     private lavaTroll!: LavaTroll;
     private spectacle!: SpectacleManager;
+    private powerUp!: PowerUp;
+    private powerUpSpawnTimer = 0;
+    private readonly POWER_UP_SPAWN_INTERVAL = 10000; // every 10 seconds
 
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -31,6 +35,7 @@ export class Game extends Scene {
     private hudScore!: Phaser.GameObjects.Text;
     private hudLives!: Phaser.GameObjects.Text;
     private hudWave!: Phaser.GameObjects.Text;
+    private hudPowerUp!: Phaser.GameObjects.Text;
     private waveText!: Phaser.GameObjects.Text;
 
     private spawnQueue: EnemyType[] = [];
@@ -89,6 +94,10 @@ export class Game extends Scene {
         // Player — spawn on middle platform
         this.player = new Player(this, GAME.WIDTH * 0.5, 320 - PLAYER.SIZE * 0.5);
         this.physics.add.collider(this.player, this.platforms);
+
+        // Power-ups
+        this.powerUp = new PowerUp(this);
+        this.powerUpSpawnTimer = this.POWER_UP_SPAWN_INTERVAL;
 
         // Object pools
         this.enemies = [];
@@ -610,12 +619,31 @@ export class Game extends Scene {
             stroke: '#000000',
             strokeThickness: 4,
         }).setOrigin(1, 0).setDepth(100);
+
+        this.hudPowerUp = this.add.text(GAME.WIDTH * 0.5, hudY + 30, '', {
+            fontFamily: arcadeFont,
+            fontSize: '16px',
+            color: '#44ddff',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(0.5, 0).setDepth(100);
     }
 
     private updateHUD(): void {
         this.hudScore.setText(`${GameState.score}`);
         this.hudLives.setText(`♥ ${GameState.lives}`);
         this.hudWave.setText(`W${GameState.wave}`);
+
+        const powerUp = this.player.getActivePowerUp();
+        if (powerUp) {
+            const labels: Record<string, string> = { speed: '⚡ SPEED', flap: '🔥 FLAP', shield: '🛡 SHIELD' };
+            const colors: Record<string, string> = { speed: '#44ddff', flap: '#ffaa00', shield: '#44ff44' };
+            this.hudPowerUp.setText(labels[powerUp] || '');
+            this.hudPowerUp.setColor(colors[powerUp] || '#ffffff');
+        } else {
+            this.hudPowerUp.setText('');
+        }
     }
 
     private setupTouchInput(): void {
@@ -845,6 +873,43 @@ export class Game extends Scene {
         // Periodic wave completion check — catches edge cases (egg waves, lava kills)
         this.checkWaveComplete();
 
+        // Power-up spawning
+        if (!this.powerUp.getIsActive() && GameState.wave >= 2) {
+            this.powerUpSpawnTimer -= delta;
+            if (this.powerUpSpawnTimer <= 0) {
+                this.powerUp.spawn();
+                this.powerUpSpawnTimer = this.POWER_UP_SPAWN_INTERVAL;
+            }
+        }
+
+        // Power-up collection
+        if (this.powerUp.getIsActive() && this.powerUp.checkOverlap(this.player.x, this.player.y)) {
+            const type = this.powerUp.getPowerUpType();
+            this.player.applyPowerUp(type);
+            this.powerUp.deactivate();
+
+            // Show floating text
+            const labels: Record<string, string> = { speed: 'SPEED BOOST!', flap: 'FLAP POWER!', shield: 'SHIELD!' };
+            const colors: Record<string, string> = { speed: '#44ddff', flap: '#ffaa00', shield: '#44ff44' };
+            const text = this.add.text(this.player.x, this.player.y - 50, labels[type], {
+                fontFamily: '"Courier New", Courier, monospace',
+                fontSize: '22px',
+                color: colors[type],
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 3,
+            }).setOrigin(0.5).setDepth(60);
+            this.tweens.add({
+                targets: text, alpha: 0, y: text.y - 40,
+                duration: 800, onComplete: () => text.destroy(),
+            });
+
+            this.updateHUD();
+        }
+
+        // Update power-up
+        this.powerUp.update(time, delta);
+
         // Bonus life check
         this.checkBonusLife();
 
@@ -1026,6 +1091,7 @@ export class Game extends Scene {
         if (this.spectacle) this.spectacle.shutdown();
         if (this.pterodactyl) this.pterodactyl.deactivate();
         if (this.lavaTroll) this.lavaTroll.setActive(false);
+        if (this.powerUp) this.powerUp.deactivate();
         if (this.joystickGraphics) this.joystickGraphics.destroy();
         if (this.joystickKnob) this.joystickKnob.destroy();
         if (this.pauseOverlay) this.pauseOverlay.destroy();

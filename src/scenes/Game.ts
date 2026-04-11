@@ -280,6 +280,15 @@ export class Game extends Scene {
     private playerHit(): void {
         if (this.player.getIsInvulnerable() || this.isGameOver) return;
 
+        // Shield absorbs the hit
+        if (this.player.hasActiveShield()) {
+            this.player.damage(); // consumes shield
+            // Bounce player away but no life lost
+            const body = this.player.body as Phaser.Physics.Arcade.Body;
+            body.setVelocityY(-200);
+            return;
+        }
+
         GameState.lives--;
         GameState.resetCombo();
         this.player.damage();
@@ -298,6 +307,15 @@ export class Game extends Scene {
 
     private handlePlayerLava(): void {
         if (this.isGameOver || this.player.getIsInvulnerable()) return;
+
+        // Shield absorbs lava hit
+        if (this.player.hasActiveShield()) {
+            this.player.damage(); // consumes shield
+            // Respawn above
+            this.player.setPosition(GAME.WIDTH * 0.5, GAME.HEIGHT * 0.3);
+            (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+            return;
+        }
 
         GameState.lives--;
         this.updateHUD();
